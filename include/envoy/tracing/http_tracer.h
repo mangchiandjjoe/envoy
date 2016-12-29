@@ -7,13 +7,30 @@
 namespace Tracing {
 
 /*
- * Context used by tracers, it carries additional data needed to populate the trace.
+ * Tracing configuration, it carries additional data needed to populate the trace.
+ */
+class TracingConfig {
+public:
+  virtual ~TracingConfig() {}
+
+  virtual const std::string& operationName() const PURE;
+};
+
+/**
+ * Tracing context.
  */
 class TracingContext {
 public:
-  virtual ~TracingContext() {}
+virtual ~TracingContext() {}
 
-  virtual const std::string& operationName() const PURE;
+/**
+ * Create span ... FIXFIXFIX
+ */
+virtual void createSpan(const RequestInfo& request_info, const Http::HeaderMap* request_headers) PURE;
+/**
+ * finish created span.
+ */
+virtual void finishSpan() PURE;
 };
 
 /**

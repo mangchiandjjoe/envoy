@@ -36,6 +36,15 @@ struct LightstepTracerStats {
   LIGHTSTEP_TRACER_STATS(GENERATE_COUNTER_STRUCT)
 };
 
+class LightStepTracingContext : public TracingContext {
+public:
+  LightStepTracingContext() { /*supply here details including Tracing Config */}
+
+  void createSpan(const Http::HeaderMap* request_headers) override {
+    if ()
+  }
+};
+
 class HttpNullTracer : public HttpTracer {
 public:
   // Tracing::HttpTracer
