@@ -16,37 +16,48 @@ public:
   virtual const std::string& operationName() const PURE;
 };
 
+class Span {
+public:
+  virtual ~Span() {}
+
+  virtual void finishSpan(const Http::AccessLog::RequestInfo& request_info,
+                          const Http::HeaderMap& response_headers) PURE;
+};
+
 /**
  * Tracing context.
  */
 class TracingContext {
 public:
-virtual ~TracingContext() {}
+  virtual ~TracingContext() {}
 
-/**
- * Create span ... FIXFIXFIX
- */
-virtual void createSpan(const RequestInfo& request_info, const Http::HeaderMap* request_headers) PURE;
-/**
- * finish created span.
- */
-virtual void finishSpan() PURE;
+  /**
+   * Create span ... FIXFIXFIX
+   */
+  virtual void startSpan(const Http::AccessLog::RequestInfo& request_info,
+                         const Http::HeaderMap& request_headers) PURE;
+  /**
+   * finish created span.
+   */
+  virtual void finishSpan(const Http::AccessLog::RequestInfo& request_info,
+                          const Http::HeaderMap* response_headers) PURE;
 };
 
+typedef std::unique_ptr<TracingContext> TracingContextPtr;
+
 /**
- * Http sink for traces. Sink is responsible for delivering trace to the collector.
+ * FIXFIXIFX
  */
-class HttpSink {
+class TracingDriver {
 public:
-  virtual ~HttpSink() {}
+  virtual ~TracingDriver() {}
 
-  virtual void flushTrace(const Http::HeaderMap& request_headers,
-                          const Http::HeaderMap& response_headers,
-                          const Http::AccessLog::RequestInfo& request_info,
-                          const TracingContext& tracing_context) PURE;
+  virtual Span* startSpan(const Http::AccessLog::RequestInfo& request_info,
+                          const Http::HeaderMap& request_headers,
+                          const TracingConfig& tracing_config) PURE;
 };
 
-typedef std::unique_ptr<HttpSink> HttpSinkPtr;
+typedef std::unique_ptr<TracingDriver> TracingDriverPtr;
 
 /**
  * HttpTracer is responsible for handling traces and delegate actual flush to sinks.
@@ -55,11 +66,10 @@ class HttpTracer {
 public:
   virtual ~HttpTracer() {}
 
-  virtual void addSink(HttpSinkPtr&& sink) PURE;
-  virtual void trace(const Http::HeaderMap* request_headers,
-                     const Http::HeaderMap* response_headers,
-                     const Http::AccessLog::RequestInfo& request_info,
-                     const TracingContext& tracing_context) PURE;
+  virtual void initializeDriver(TracingDriver&& driver) PURE;
+  virtual Span* startSpan(const Http::AccessLog::RequestInfo& request_info,
+                          const Http::HeaderMap& request_headers,
+                          const TracingConfig& tracing_config) PURE;
 };
 
 typedef std::unique_ptr<HttpTracer> HttpTracerPtr;

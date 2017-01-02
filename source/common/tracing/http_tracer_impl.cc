@@ -85,17 +85,7 @@ void HttpTracerImpl::trace(const Http::HeaderMap* request_headers,
                            const Http::HeaderMap* response_headers,
                            const Http::AccessLog::RequestInfo& request_info,
                            const TracingContext& tracing_context) {
-  static const Http::HeaderMapImpl empty_headers;
-  if (!request_headers) {
-    request_headers = &empty_headers;
-  }
-  if (!response_headers) {
-    response_headers = &empty_headers;
-  }
 
-  stats_.flush_.inc();
-
-  Decision decision = HttpTracerUtility::isTracing(request_info, *request_headers);
   populateStats(decision);
 
   if (decision.is_tracing) {
