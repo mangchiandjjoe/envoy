@@ -2,6 +2,7 @@
 
 #include "envoy/http/async_client.h"
 #include "envoy/http/conn_pool.h"
+#include "envoy/json/json_object.h"
 #include "envoy/upstream/upstream.h"
 
 namespace Upstream {
@@ -15,15 +16,22 @@ public:
   virtual ~ClusterManager() {}
 
   /**
+   * fixfix
+   */
+  virtual bool addOrUpdatePrimaryCluster(const Json::Object& config) PURE;
+
+  /**
    * Set a callback that will be invoked when all owned clusters have been initialized.
    */
   virtual void setInitializedCb(std::function<void()> callback) PURE;
 
+  typedef std::unordered_map<std::string, std::reference_wrapper<const Cluster>> ClusterInfoMap;
+
   /**
-   * @return std::unordered_map<std::string, ConstClusterPtr> all current clusters. These are are
-   * the primary (not thread local) clusters so should just be used for stats/admin.
+   * @return ClusterInfoMap all current clusters. These are are the primary (not thread local)
+   * clusters so should just be used for stats/admin.
    */
-  virtual std::unordered_map<std::string, ConstClusterPtr> clusters() PURE;
+  virtual ClusterInfoMap clusters() PURE;
 
   /**
    * @return ClusterInfoPtr the cluster info with the given name or nullptr if it does not
@@ -59,7 +67,12 @@ public:
   virtual Http::AsyncClient& httpAsyncClientForCluster(const std::string& cluster) PURE;
 
   /**
-   * Shutdown the cluster prior to destroying connection pools and other thread local data.
+   * fixfix
+   */
+  virtual bool removePrimaryCluster(const std::string& cluster) PURE;
+
+  /**
+   * Shutdown the cluster manager prior to destroying connection pools and other thread local data.
    */
   virtual void shutdown() PURE;
 };

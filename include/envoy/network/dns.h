@@ -2,10 +2,6 @@
 
 #include "envoy/common/pure.h"
 
-namespace Event {
-class Dispatcher;
-}
-
 namespace Network {
 
 /**
@@ -16,11 +12,6 @@ public:
   virtual ~DnsResolver() {}
 
   /**
-   * @return Event::Dispatcher& the dispatcher backing the resolver.
-   */
-  virtual Event::Dispatcher& dispatcher() PURE;
-
-  /**
    * Called when a resolution attempt is complete.
    * @param address_list supplies the list of resolved IP addresses. The list will be empty if
    *                     the resolution failed.
@@ -28,7 +19,7 @@ public:
   typedef std::function<void(std::list<std::string>&& address_list)> ResolveCb;
 
   /**
-   * Initiate an async DNS resolution.
+   * Initiate an async DNS resolution. FIXFIX need to allow cancel.
    * @param dns_name supplies the DNS name to lookup.
    * @param callback supplies the callback to invoke when the resolution is complete.
    */

@@ -25,12 +25,14 @@ class LogicalDnsCluster : public ClusterImplBase {
 public:
   LogicalDnsCluster(const Json::Object& config, Runtime::Loader& runtime, Stats::Store& stats,
                     Ssl::ContextManager& ssl_context_manager, Network::DnsResolver& dns_resolver,
-                    ThreadLocal::Instance& tls);
+                    ThreadLocal::Instance& tls, Event::Dispatcher& dispatcher, bool added_via_api);
 
   // Upstream::Cluster
   void setInitializedCb(std::function<void()> callback) override {
     initialize_callback_ = callback;
   }
+
+  // fixfix cancel dns
   void shutdown() override {}
 
 private:

@@ -20,26 +20,28 @@ ClusterManagerImpl::ClusterManagerImpl(
     const Json::Object& config, Stats::Store& stats, ThreadLocal::Instance& tls,
     Network::DnsResolver& dns_resolver, Ssl::ContextManager& ssl_context_manager,
     Runtime::Loader& runtime, Runtime::RandomGenerator& random, const std::string& local_zone_name,
-    const std::string& local_address, AccessLog::AccessLogManager& log_manager)
-    : runtime_(runtime), tls_(tls), stats_(stats), thread_local_slot_(tls.allocateSlot()) {
+    const std::string& local_address, AccessLog::AccessLogManager& log_manager,
+    Event::Dispatcher& dispatcher)
+    : runtime_(runtime), stats_(stats), tls_(tls), dns_resolver_(dns_resolver),
+      ssl_context_manager_(ssl_context_manager), dispatcher_(dispatcher), random_(random),
+      thread_local_slot_(tls.allocateSlot()), local_zone_name_(local_zone_name),
+      local_address_(local_address) {
 
   std::vector<Json::ObjectPtr> clusters = config.getObjectArray("clusters");
   pending_cluster_init_ = clusters.size();
 
-  Outlier::EventLoggerPtr outlier_event_logger;
   if (config.hasObject("outlier_detection")) {
     std::string event_log_file_path =
         config.getObject("outlier_detection")->getString("event_log_path", "");
     if (!event_log_file_path.empty()) {
-      outlier_event_logger.reset(new Outlier::EventLoggerImpl(log_manager, event_log_file_path,
-                                                              ProdSystemTimeSource::instance_));
+      outlier_event_logger_.reset(new Outlier::EventLoggerImpl(log_manager, event_log_file_path,
+                                                               ProdSystemTimeSource::instance_));
     }
   }
 
   if (config.hasObject("sds")) {
     pending_cluster_init_++;
-    loadCluster(*config.getObject("sds")->getObject("cluster"), stats, dns_resolver,
-                ssl_context_manager, runtime, random, outlier_event_logger);
+    loadCluster(*config.getObject("sds")->getObject("cluster"), false);
 
     SdsConfig sds_config{
         local_zone_name, config.getObject("sds")->getObject("cluster")->getString("name"),
@@ -49,8 +51,7 @@ ClusterManagerImpl::ClusterManagerImpl(
   }
 
   for (const Json::ObjectPtr& cluster : clusters) {
-    loadCluster(*cluster, stats, dns_resolver, ssl_context_manager, runtime, random,
-                outlier_event_logger);
+    loadCluster(*cluster, false);
   }
 
   Optional<std::string> local_cluster_name;
@@ -63,48 +64,71 @@ ClusterManagerImpl::ClusterManagerImpl(
   }
 
   tls.set(thread_local_slot_,
-          [this, &stats, &runtime, &random, local_zone_name, local_address, local_cluster_name](
-              Event::Dispatcher& dispatcher) -> ThreadLocal::ThreadLocalObjectPtr {
-            return ThreadLocal::ThreadLocalObjectPtr{new ThreadLocalClusterManagerImpl(
-                *this, dispatcher, runtime, random, local_zone_name, local_address,
-                local_cluster_name)};
-          });
+          [this, local_cluster_name](Event::Dispatcher& dispatcher)
+              -> ThreadLocal::ThreadLocalObjectPtr {
+                return ThreadLocal::ThreadLocalObjectPtr{
+                    new ThreadLocalClusterManagerImpl(*this, dispatcher, local_cluster_name)};
+              });
 
   // To avoid threading issues, for those clusters that start with hosts already in them (like
   // the static cluster), we need to post an update onto each thread to notify them of the update.
   for (auto& cluster : primary_clusters_) {
-    if (cluster.second->hosts().empty()) {
+    if (cluster.second.cluster_->hosts().empty()) {
       continue;
     }
 
-    postThreadLocalClusterUpdate(*cluster.second, cluster.second->hosts(), std::vector<HostPtr>{});
-  }
+    postThreadLocalClusterUpdate(*cluster.second.cluster_, cluster.second.cluster_->hosts(),
+                                 std::vector<HostPtr>{});
+  } // fixfix do this for dynamic add
 }
 
-void ClusterManagerImpl::loadCluster(const Json::Object& cluster, Stats::Store& stats,
-                                     Network::DnsResolver& dns_resolver,
-                                     Ssl::ContextManager& ssl_context_manager,
-                                     Runtime::Loader& runtime, Runtime::RandomGenerator& random,
-                                     Outlier::EventLoggerPtr event_logger) {
+bool ClusterManagerImpl::addOrUpdatePrimaryCluster(const Json::Object& new_config) {
+  // First we need to see if this new config is new or an update to an existing dynamic cluster.
+  // We don't allow updates to statically configured clusters in the main configuration.
+  std::string cluster_name = new_config.getString("name");
+  auto existing_cluster = primary_clusters_.find(cluster_name);
+  if (existing_cluster != primary_clusters_.end() &&
+      (!existing_cluster->second.cluster_->addedViaApi() ||
+       existing_cluster->second.config_hash_ == new_config.hash())) {
+    return false;
+  }
 
+  loadCluster(new_config, true);
+  ClusterInfoPtr new_cluster = primary_clusters_.at(cluster_name).cluster_->info();
+  tls_.runOnAllThreads([this, new_cluster]() -> void {
+    ThreadLocalClusterManagerImpl& cluster_manager =
+        tls_.getTyped<ThreadLocalClusterManagerImpl>(thread_local_slot_);
+
+    cluster_manager.thread_local_clusters_[new_cluster->name()].reset(
+        new ThreadLocalClusterManagerImpl::ClusterEntry(cluster_manager, new_cluster));
+
+  });
+
+  return true;
+}
+
+bool ClusterManagerImpl::removePrimaryCluster(const std::string&) { ASSERT(false); }
+
+void ClusterManagerImpl::loadCluster(const Json::Object& cluster, bool added_via_api) {
   std::string string_type = cluster.getString("type");
   ClusterImplBasePtr new_cluster;
   if (string_type == "static") {
-    new_cluster.reset(new StaticClusterImpl(cluster, runtime, stats, ssl_context_manager));
+    new_cluster.reset(
+        new StaticClusterImpl(cluster, runtime_, stats_, ssl_context_manager_, added_via_api));
   } else if (string_type == "strict_dns") {
-    new_cluster.reset(
-        new StrictDnsClusterImpl(cluster, runtime, stats, ssl_context_manager, dns_resolver));
+    new_cluster.reset(new StrictDnsClusterImpl(cluster, runtime_, stats_, ssl_context_manager_,
+                                               dns_resolver_, dispatcher_, added_via_api));
   } else if (string_type == "logical_dns") {
-    new_cluster.reset(
-        new LogicalDnsCluster(cluster, runtime, stats, ssl_context_manager, dns_resolver, tls_));
+    new_cluster.reset(new LogicalDnsCluster(cluster, runtime_, stats_, ssl_context_manager_,
+                                            dns_resolver_, tls_, dispatcher_, added_via_api));
   } else if (string_type == "sds") {
     if (!sds_config_.valid()) {
       throw EnvoyException("cannot create an sds cluster without an sds config");
     }
 
-    sds_clusters_.push_back(new SdsClusterImpl(cluster, runtime, stats, ssl_context_manager,
-                                               sds_config_.value(), *this,
-                                               dns_resolver.dispatcher(), random));
+    sds_clusters_.push_back(new SdsClusterImpl(cluster, runtime_, stats_, ssl_context_manager_,
+                                               sds_config_.value(), *this, dispatcher_, random_,
+                                               added_via_api));
     new_cluster.reset(sds_clusters_.back());
   } else {
     throw EnvoyException(fmt::format("cluster: unknown cluster type '{}'", string_type));
@@ -114,6 +138,7 @@ void ClusterManagerImpl::loadCluster(const Json::Object& cluster, Stats::Store& 
     throw EnvoyException(fmt::format("route: duplicate cluster '{}'", new_cluster->info()->name()));
   }
 
+  ASSERT(pending_cluster_init_ > 0);
   new_cluster->setInitializedCb([this]() -> void {
     ASSERT(pending_cluster_init_ > 0);
     if (--pending_cluster_init_ == 0) {
@@ -124,7 +149,7 @@ void ClusterManagerImpl::loadCluster(const Json::Object& cluster, Stats::Store& 
       // All other clusters have initialized. Now we start up the SDS clusters since they will
       // depend on DNS resolution for the SDS cluster itself.
       for (SdsClusterImpl* cluster : sds_clusters_) {
-        cluster->initialize();
+        cluster->initialize(); // fixfix need to do this for dynamic clusters.
       }
     }
   });
@@ -142,18 +167,19 @@ void ClusterManagerImpl::loadCluster(const Json::Object& cluster, Stats::Store& 
     std::string hc_type = health_check_config->getString("type");
     if (hc_type == "http") {
       new_cluster->setHealthChecker(HealthCheckerPtr{new ProdHttpHealthCheckerImpl(
-          *new_cluster, *health_check_config, dns_resolver.dispatcher(), stats, runtime, random)});
+          *new_cluster, *health_check_config, dispatcher_, stats_, runtime_, random_)});
     } else if (hc_type == "tcp") {
       new_cluster->setHealthChecker(HealthCheckerPtr{new TcpHealthCheckerImpl(
-          *new_cluster, *health_check_config, dns_resolver.dispatcher(), stats, runtime, random)});
+          *new_cluster, *health_check_config, dispatcher_, stats_, runtime_, random_)});
     } else {
       throw EnvoyException(fmt::format("cluster: unknown health check type '{}'", hc_type));
     }
   }
 
   new_cluster->setOutlierDetector(Outlier::DetectorImplFactory::createForCluster(
-      *new_cluster, cluster, dns_resolver.dispatcher(), runtime, stats, event_logger));
-  primary_clusters_.emplace(new_cluster->info()->name(), new_cluster);
+      *new_cluster, cluster, dispatcher_, runtime_, stats_, outlier_event_logger_));
+  primary_clusters_.emplace(new_cluster->info()->name(),
+                            PrimaryClusterData{cluster.hash(), std::move(new_cluster)});
 }
 
 ClusterInfoPtr ClusterManagerImpl::get(const std::string& cluster) {
@@ -162,7 +188,7 @@ ClusterInfoPtr ClusterManagerImpl::get(const std::string& cluster) {
 
   auto entry = cluster_manager.thread_local_clusters_.find(cluster);
   if (entry != cluster_manager.thread_local_clusters_.end()) {
-    return entry->second->primary_cluster_->info();
+    return entry->second->cluster_info_;
   } else {
     return nullptr;
   }
@@ -190,16 +216,13 @@ void ClusterManagerImpl::postThreadLocalClusterUpdate(const ClusterImplBase& pri
   ConstHostVectorPtr healthy_hosts_copy = primary_cluster.rawHealthyHosts();
   ConstHostListsPtr hosts_per_zone_copy = primary_cluster.rawHostsPerZone();
   ConstHostListsPtr healthy_hosts_per_zone_copy = primary_cluster.rawHealthyHostsPerZone();
-  ThreadLocal::Instance& tls = tls_;
-  uint32_t thead_local_slot = thread_local_slot_;
 
-  tls_.runOnAllThreads(
-      [name, hosts_copy, healthy_hosts_copy, hosts_per_zone_copy, healthy_hosts_per_zone_copy,
-       hosts_added, hosts_removed, &tls, thead_local_slot]() mutable -> void {
-        ThreadLocalClusterManagerImpl::updateClusterMembership(
-            name, hosts_copy, healthy_hosts_copy, hosts_per_zone_copy, healthy_hosts_per_zone_copy,
-            hosts_added, hosts_removed, tls, thead_local_slot);
-      });
+  tls_.runOnAllThreads([this, name, hosts_copy, healthy_hosts_copy, hosts_per_zone_copy,
+                        healthy_hosts_per_zone_copy, hosts_added, hosts_removed]() -> void {
+    ThreadLocalClusterManagerImpl::updateClusterMembership(
+        name, hosts_copy, healthy_hosts_copy, hosts_per_zone_copy, healthy_hosts_per_zone_copy,
+        hosts_added, hosts_removed, tls_, thread_local_slot_);
+  });
 }
 
 Host::CreateConnectionData ClusterManagerImpl::tcpConnForCluster(const std::string& cluster) {
@@ -215,7 +238,7 @@ Host::CreateConnectionData ClusterManagerImpl::tcpConnForCluster(const std::stri
   if (logical_host) {
     return logical_host->createConnection(cluster_manager.dispatcher_);
   } else {
-    entry->second->primary_cluster_->info()->stats().upstream_cx_none_healthy_.inc();
+    entry->second->cluster_info_->stats().upstream_cx_none_healthy_.inc();
     return {nullptr, nullptr};
   }
 }
@@ -232,21 +255,19 @@ Http::AsyncClient& ClusterManagerImpl::httpAsyncClientForCluster(const std::stri
 }
 
 ClusterManagerImpl::ThreadLocalClusterManagerImpl::ThreadLocalClusterManagerImpl(
-    ClusterManagerImpl& parent, Event::Dispatcher& dispatcher, Runtime::Loader& runtime,
-    Runtime::RandomGenerator& random, const std::string& local_zone_name,
-    const std::string& local_address, const Optional<std::string>& local_cluster_name)
+    ClusterManagerImpl& parent, Event::Dispatcher& dispatcher,
+    const Optional<std::string>& local_cluster_name)
     : parent_(parent), dispatcher_(dispatcher) {
   // If local cluster is defined then we need to initialize it first.
   if (local_cluster_name.valid()) {
-    auto& local_cluster = parent.primary_clusters_[local_cluster_name.value()];
+    auto& local_cluster = parent.primary_clusters_.at(local_cluster_name.value()).cluster_;
     thread_local_clusters_[local_cluster_name.value()].reset(
-        new ClusterEntry(*this, local_cluster, runtime, random, parent.stats_, dispatcher,
-                         local_zone_name, local_address, nullptr));
+        new ClusterEntry(*this, local_cluster->info()));
   }
 
-  const HostSet* local_host_set =
-      local_cluster_name.valid() ? &thread_local_clusters_[local_cluster_name.value()]->host_set_
-                                 : nullptr;
+  local_host_set_ = local_cluster_name.valid()
+                        ? &thread_local_clusters_[local_cluster_name.value()]->host_set_
+                        : nullptr;
 
   for (auto& cluster : parent.primary_clusters_) {
     // If local cluster name is set then we already initialized this cluster.
@@ -255,23 +276,7 @@ ClusterManagerImpl::ThreadLocalClusterManagerImpl::ThreadLocalClusterManagerImpl
     }
 
     thread_local_clusters_[cluster.first].reset(
-        new ClusterEntry(*this, cluster.second, runtime, random, parent.stats_, dispatcher,
-                         local_zone_name, local_address, local_host_set));
-  }
-
-  for (auto& cluster : thread_local_clusters_) {
-    cluster.second->host_set_.addMemberUpdateCb(
-        [this](const std::vector<HostPtr>&, const std::vector<HostPtr>& hosts_removed) -> void {
-          // We need to go through and purge any connection pools for hosts that got deleted.
-          // Even if two hosts actually point to the same address this will be safe, since if a
-          // host is readded it will be a different physical HostPtr.
-          for (const HostPtr& old_host : hosts_removed) {
-            auto container = host_http_conn_pool_map_.find(old_host);
-            if (container != host_http_conn_pool_map_.end()) {
-              drainConnPools(old_host, container->second);
-            }
-          }
-        });
+        new ClusterEntry(*this, cluster.second.cluster_->info()));
   }
 }
 
@@ -324,33 +329,44 @@ void ClusterManagerImpl::ThreadLocalClusterManagerImpl::shutdown() {
 }
 
 ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::ClusterEntry(
-    ThreadLocalClusterManagerImpl& parent, ConstClusterPtr cluster, Runtime::Loader& runtime,
-    Runtime::RandomGenerator& random, Stats::Store& stats_store, Event::Dispatcher& dispatcher,
-    const std::string& local_zone_name, const std::string& local_address,
-    const HostSet* local_host_set)
-    : parent_(parent), primary_cluster_(cluster),
-      http_async_client_(*cluster->info(), stats_store, dispatcher, local_zone_name, parent.parent_,
-                         runtime, random,
+    ThreadLocalClusterManagerImpl& parent, ClusterInfoPtr cluster)
+    : parent_(parent), cluster_info_(cluster),
+      http_async_client_(*cluster, parent.parent_.stats_, parent.parent_.dispatcher_,
+                         parent.parent_.local_zone_name_, parent.parent_, parent.parent_.runtime_,
+                         parent.parent_.random_,
                          Router::ShadowWriterPtr{new Router::ShadowWriterImpl(parent.parent_)},
-                         local_address) {
+                         parent.parent_.local_address_) {
 
   switch (cluster->lbType()) {
   case LoadBalancerType::LeastRequest: {
-    lb_.reset(new LeastRequestLoadBalancer(host_set_, local_host_set, cluster->info()->stats(),
-                                           runtime, random));
+    lb_.reset(new LeastRequestLoadBalancer(host_set_, parent.local_host_set_, cluster->stats(),
+                                           parent.parent_.runtime_, parent.parent_.random_));
     break;
   }
   case LoadBalancerType::Random: {
-    lb_.reset(new RandomLoadBalancer(host_set_, local_host_set, cluster->info()->stats(), runtime,
-                                     random));
+    lb_.reset(new RandomLoadBalancer(host_set_, parent.local_host_set_, cluster->stats(),
+                                     parent.parent_.runtime_, parent.parent_.random_));
     break;
   }
   case LoadBalancerType::RoundRobin: {
-    lb_.reset(new RoundRobinLoadBalancer(host_set_, local_host_set, cluster->info()->stats(),
-                                         runtime, random));
+    lb_.reset(new RoundRobinLoadBalancer(host_set_, parent.local_host_set_, cluster->stats(),
+                                         parent.parent_.runtime_, parent.parent_.random_));
     break;
   }
   }
+
+  host_set_.addMemberUpdateCb(
+      [this](const std::vector<HostPtr>&, const std::vector<HostPtr>& hosts_removed) -> void {
+        // We need to go through and purge any connection pools for hosts that got deleted.
+        // Even if two hosts actually point to the same address this will be safe, since if a
+        // host is readded it will be a different physical HostPtr.
+        for (const HostPtr& old_host : hosts_removed) {
+          auto container = parent_.host_http_conn_pool_map_.find(old_host);
+          if (container != parent_.host_http_conn_pool_map_.end()) {
+            parent_.drainConnPools(old_host, container->second);
+          }
+        }
+      });
 }
 
 Http::ConnectionPool::Instance*
@@ -358,7 +374,7 @@ ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::connPool(
     ResourcePriority priority) {
   ConstHostPtr host = lb_->chooseHost();
   if (!host) {
-    primary_cluster_->info()->stats().upstream_cx_none_healthy_.inc();
+    cluster_info_->stats().upstream_cx_none_healthy_.inc();
     return nullptr;
   }
 

@@ -16,9 +16,9 @@ class LogicalDnsClusterTest : public testing::Test {
 public:
   void setup(const std::string& json) {
     Json::ObjectPtr config = Json::Factory::LoadFromString(json);
-    resolve_timer_ = new Event::MockTimer(&dns_resolver_.dispatcher_);
+    resolve_timer_ = new Event::MockTimer(&dispatcher_);
     cluster_.reset(new LogicalDnsCluster(*config, runtime_, stats_store_, ssl_context_manager_,
-                                         dns_resolver_, tls_));
+                                         dns_resolver_, tls_, dispatcher_, false));
     cluster_->addMemberUpdateCb([&](const std::vector<HostPtr>&, const std::vector<HostPtr>&)
                                     -> void { membership_updated_.ready(); });
     cluster_->setInitializedCb([&]() -> void { initialized_.ready(); });
@@ -40,6 +40,7 @@ public:
   ReadyWatcher membership_updated_;
   ReadyWatcher initialized_;
   NiceMock<Runtime::MockLoader> runtime_;
+  NiceMock<Event::MockDispatcher> dispatcher_;
 };
 
 TEST_F(LogicalDnsClusterTest, BadConfig) {
@@ -83,8 +84,8 @@ TEST_F(LogicalDnsClusterTest, Basic) {
   EXPECT_EQ(cluster_->hosts()[0], cluster_->healthyHosts()[0]);
   HostPtr logical_host = cluster_->hosts()[0];
 
-  EXPECT_CALL(dns_resolver_.dispatcher_, createClientConnection_("tcp://127.0.0.1:443"));
-  logical_host->createConnection(dns_resolver_.dispatcher_);
+  EXPECT_CALL(dispatcher_, createClientConnection_("tcp://127.0.0.1:443"));
+  logical_host->createConnection(dispatcher_);
   logical_host->outlierDetector().putHttpResponseCode(200);
 
   expectResolve();
@@ -95,8 +96,8 @@ TEST_F(LogicalDnsClusterTest, Basic) {
   dns_callback_({"127.0.0.1", "127.0.0.2", "127.0.0.3"});
 
   EXPECT_EQ(logical_host, cluster_->hosts()[0]);
-  EXPECT_CALL(dns_resolver_.dispatcher_, createClientConnection_("tcp://127.0.0.1:443"));
-  Host::CreateConnectionData data = logical_host->createConnection(dns_resolver_.dispatcher_);
+  EXPECT_CALL(dispatcher_, createClientConnection_("tcp://127.0.0.1:443"));
+  Host::CreateConnectionData data = logical_host->createConnection(dispatcher_);
   EXPECT_FALSE(data.host_description_->canary());
   EXPECT_EQ(&cluster_->hosts()[0]->cluster(), &data.host_description_->cluster());
   EXPECT_EQ(&cluster_->hosts()[0]->stats(), &data.host_description_->stats());
@@ -112,8 +113,8 @@ TEST_F(LogicalDnsClusterTest, Basic) {
   dns_callback_({"127.0.0.3", "127.0.0.1", "127.0.0.2"});
 
   EXPECT_EQ(logical_host, cluster_->hosts()[0]);
-  EXPECT_CALL(dns_resolver_.dispatcher_, createClientConnection_("tcp://127.0.0.3:443"));
-  logical_host->createConnection(dns_resolver_.dispatcher_);
+  EXPECT_CALL(dispatcher_, createClientConnection_("tcp://127.0.0.3:443"));
+  logical_host->createConnection(dispatcher_);
 
   expectResolve();
   resolve_timer_->callback_();
@@ -123,8 +124,8 @@ TEST_F(LogicalDnsClusterTest, Basic) {
   dns_callback_({});
 
   EXPECT_EQ(logical_host, cluster_->hosts()[0]);
-  EXPECT_CALL(dns_resolver_.dispatcher_, createClientConnection_("tcp://127.0.0.3:443"));
-  logical_host->createConnection(dns_resolver_.dispatcher_);
+  EXPECT_CALL(dispatcher_, createClientConnection_("tcp://127.0.0.3:443"));
+  logical_host->createConnection(dispatcher_);
 
   cluster_->shutdown();
   tls_.shutdownThread();

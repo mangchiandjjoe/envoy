@@ -239,6 +239,11 @@ public:
   virtual uint64_t httpCodecOptions() const PURE;
 
   /**
+   * @return the type of load balancing that the cluster should use.
+   */
+  virtual LoadBalancerType lbType() const PURE;
+
+  /**
    * @return Whether the cluster is currently in maintenance mode and should not be routed to.
    *         Different filters may handle this situation in different ways. The implementation
    *         of this routine is typically based on randomness and may not return the same answer
@@ -289,14 +294,14 @@ typedef std::shared_ptr<const ClusterInfo> ClusterInfoPtr;
 class Cluster : public virtual HostSet {
 public:
   /**
+   * fixfix
+   */
+  virtual bool addedViaApi() const PURE;
+
+  /**
    * @return the information about this upstream cluster.
    */
   virtual ClusterInfoPtr info() const PURE;
-
-  /**
-   * @return the type of load balancing that the cluster should use.
-   */
-  virtual LoadBalancerType lbType() const PURE;
 
   /**
    * Set a callback that will be invoked after the cluster has undergone first time initialization.
@@ -310,8 +315,5 @@ public:
    */
   virtual void shutdown() PURE;
 };
-
-typedef std::shared_ptr<Cluster> ClusterPtr;
-typedef std::shared_ptr<const Cluster> ConstClusterPtr;
 
 } // Upstream

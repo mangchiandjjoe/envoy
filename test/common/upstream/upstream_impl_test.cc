@@ -27,8 +27,8 @@ static std::list<std::string> hostListToURLs(const std::vector<HostPtr>& hosts) 
 }
 
 struct ResolverData {
-  ResolverData(Network::MockDnsResolver& dns_resolver) {
-    timer_ = new Event::MockTimer(&dns_resolver.dispatcher_);
+  ResolverData(Network::MockDnsResolver& dns_resolver, Event::MockDispatcher& dispatcher) {
+    timer_ = new Event::MockTimer(&dispatcher);
     expectResolve(dns_resolver);
   }
 
@@ -47,11 +47,12 @@ TEST(StrictDnsClusterImplTest, Basic) {
   Stats::IsolatedStoreImpl stats;
   Ssl::MockContextManager ssl_context_manager;
   NiceMock<Network::MockDnsResolver> dns_resolver;
+  NiceMock<Event::MockDispatcher> dispatcher;
   NiceMock<Runtime::MockLoader> runtime;
 
   // gmock matches in LIFO order which is why these are swapped.
-  ResolverData resolver2(dns_resolver);
-  ResolverData resolver1(dns_resolver);
+  ResolverData resolver2(dns_resolver, dispatcher);
+  ResolverData resolver1(dns_resolver, dispatcher);
 
   std::string json = R"EOF(
   {
@@ -82,7 +83,8 @@ TEST(StrictDnsClusterImplTest, Basic) {
   )EOF";
 
   Json::ObjectPtr loader = Json::Factory::LoadFromString(json);
-  StrictDnsClusterImpl cluster(*loader, runtime, stats, ssl_context_manager, dns_resolver);
+  StrictDnsClusterImpl cluster(*loader, runtime, stats, ssl_context_manager, dns_resolver,
+                               dispatcher, false);
   EXPECT_EQ(43U, cluster.info()->resourceManager(ResourcePriority::Default).connections().max());
   EXPECT_EQ(57U,
             cluster.info()->resourceManager(ResourcePriority::Default).pendingRequests().max());
@@ -208,7 +210,7 @@ TEST(StaticClusterImplTest, OutlierDetector) {
   )EOF";
 
   Json::ObjectPtr config = Json::Factory::LoadFromString(json);
-  StaticClusterImpl cluster(*config, runtime, stats, ssl_context_manager);
+  StaticClusterImpl cluster(*config, runtime, stats, ssl_context_manager, false);
 
   Outlier::MockDetector* detector = new Outlier::MockDetector();
   EXPECT_CALL(*detector, addChangedStateCb(_));
@@ -249,7 +251,7 @@ TEST(StaticClusterImplTest, HealthyStat) {
   )EOF";
 
   Json::ObjectPtr config = Json::Factory::LoadFromString(json);
-  StaticClusterImpl cluster(*config, runtime, stats, ssl_context_manager);
+  StaticClusterImpl cluster(*config, runtime, stats, ssl_context_manager, false);
 
   Outlier::MockDetector* outlier_detector = new NiceMock<Outlier::MockDetector>();
   cluster.setOutlierDetector(Outlier::DetectorPtr{outlier_detector});
@@ -307,7 +309,7 @@ TEST(StaticClusterImplTest, UrlConfig) {
   )EOF";
 
   Json::ObjectPtr config = Json::Factory::LoadFromString(json);
-  StaticClusterImpl cluster(*config, runtime, stats, ssl_context_manager);
+  StaticClusterImpl cluster(*config, runtime, stats, ssl_context_manager, false);
   EXPECT_EQ(1024U, cluster.info()->resourceManager(ResourcePriority::Default).connections().max());
   EXPECT_EQ(1024U,
             cluster.info()->resourceManager(ResourcePriority::Default).pendingRequests().max());
@@ -319,7 +321,7 @@ TEST(StaticClusterImplTest, UrlConfig) {
   EXPECT_EQ(3U, cluster.info()->resourceManager(ResourcePriority::High).retries().max());
   EXPECT_EQ(0U, cluster.info()->maxRequestsPerConnection());
   EXPECT_EQ(0U, cluster.info()->httpCodecOptions());
-  EXPECT_EQ(LoadBalancerType::Random, cluster.lbType());
+  EXPECT_EQ(LoadBalancerType::Random, cluster.info()->lbType());
   EXPECT_THAT(std::list<std::string>({"tcp://10.0.0.1:11001", "tcp://10.0.0.2:11002"}),
               ContainerEq(hostListToURLs(cluster.hosts())));
   EXPECT_EQ(2UL, cluster.healthyHosts().size());
@@ -343,7 +345,8 @@ TEST(StaticClusterImplTest, UnsupportedLBType) {
   )EOF";
 
   Json::ObjectPtr config = Json::Factory::LoadFromString(json);
-  EXPECT_THROW(StaticClusterImpl(*config, runtime, stats, ssl_context_manager), EnvoyException);
+  EXPECT_THROW(StaticClusterImpl(*config, runtime, stats, ssl_context_manager, false),
+               EnvoyException);
 }
 
 TEST(StaticClusterImplTest, UnsupportedFeature) {
@@ -363,7 +366,8 @@ TEST(StaticClusterImplTest, UnsupportedFeature) {
   )EOF";
 
   Json::ObjectPtr config = Json::Factory::LoadFromString(json);
-  EXPECT_THROW(StaticClusterImpl(*config, runtime, stats, ssl_context_manager), EnvoyException);
+  EXPECT_THROW(StaticClusterImpl(*config, runtime, stats, ssl_context_manager, false),
+               EnvoyException);
 }
 
 } // Upstream

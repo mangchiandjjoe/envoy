@@ -20,7 +20,6 @@ public:
   ~DnsResolverImpl();
 
   // Network::DnsResolver
-  Event::Dispatcher& dispatcher() override { return dispatcher_; }
   void resolve(const std::string& dns_name, ResolveCb callback) override;
 
 private:

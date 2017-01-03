@@ -170,11 +170,12 @@ public:
   std::chrono::milliseconds connectTimeout() const override { return connect_timeout_; }
   uint64_t features() const override { return features_; }
   uint64_t httpCodecOptions() const override { return http_codec_options_; }
-  Ssl::ClientContext* sslContext() const override { return ssl_ctx_; }
+  LoadBalancerType lbType() const override { return lb_type_; }
   bool maintenanceMode() const override;
   uint64_t maxRequestsPerConnection() const override { return max_requests_per_connection_; }
   const std::string& name() const override { return name_; }
   ResourceManager& resourceManager(ResourcePriority priority) const override;
+  Ssl::ClientContext* sslContext() const override { return ssl_ctx_; }
   const std::string& statPrefix() const override { return stat_prefix_; }
   ClusterStats& stats() const override { return stats_; }
 
@@ -204,6 +205,7 @@ private:
   const uint64_t http_codec_options_;
   mutable ResourceManagers resource_managers_;
   const std::string maintenance_mode_runtime_key_;
+  LoadBalancerType lb_type_;
 };
 
 /**
@@ -228,12 +230,12 @@ public:
   void setOutlierDetector(Outlier::DetectorPtr outlier_detector);
 
   // Upstream::Cluster
+  bool addedViaApi() const override { return added_via_api_; }
   ClusterInfoPtr info() const override { return info_; }
-  LoadBalancerType lbType() const override { return lb_type_; }
 
 protected:
   ClusterImplBase(const Json::Object& config, Runtime::Loader& runtime, Stats::Store& stats,
-                  Ssl::ContextManager& ssl_context_manager);
+                  Ssl::ContextManager& ssl_context_manager, bool added_via_api);
 
   static ConstHostVectorPtr createHealthyHostList(const std::vector<HostPtr>& hosts);
   static ConstHostListsPtr createHealthyHostLists(const std::vector<std::vector<HostPtr>>& hosts);
@@ -243,13 +245,13 @@ protected:
   static const ConstHostListsPtr empty_host_lists_;
 
   Runtime::Loader& runtime_;
-  LoadBalancerType lb_type_;
   HealthCheckerPtr health_checker_;
   Outlier::DetectorPtr outlier_detector_;
   ClusterInfoPtr info_;
+  const bool added_via_api_;
 };
 
-typedef std::shared_ptr<ClusterImplBase> ClusterImplBasePtr;
+typedef std::unique_ptr<ClusterImplBase> ClusterImplBasePtr;
 
 /**
  * Implementation of Upstream::Cluster for static clusters (clusters that have a fixed number of
@@ -258,7 +260,7 @@ typedef std::shared_ptr<ClusterImplBase> ClusterImplBasePtr;
 class StaticClusterImpl : public ClusterImplBase {
 public:
   StaticClusterImpl(const Json::Object& config, Runtime::Loader& runtime, Stats::Store& stats,
-                    Ssl::ContextManager& ssl_context_manager);
+                    Ssl::ContextManager& ssl_context_manager, bool added_via_api);
 
   // Upstream::Cluster
   void setInitializedCb(std::function<void()> callback) override { callback(); }
@@ -292,15 +294,17 @@ protected:
 class StrictDnsClusterImpl : public BaseDynamicClusterImpl {
 public:
   StrictDnsClusterImpl(const Json::Object& config, Runtime::Loader& runtime, Stats::Store& stats,
-                       Ssl::ContextManager& ssl_context_manager,
-                       Network::DnsResolver& dns_resolver);
+                       Ssl::ContextManager& ssl_context_manager, Network::DnsResolver& dns_resolver,
+                       Event::Dispatcher& dispatcher, bool added_via_api);
 
   // Upstream::Cluster
+  // fixfix cancel dns
   void shutdown() override {}
 
 private:
   struct ResolveTarget {
-    ResolveTarget(StrictDnsClusterImpl& parent, const std::string& url);
+    ResolveTarget(StrictDnsClusterImpl& parent, Event::Dispatcher& dispatcher,
+                  const std::string& url);
     void startResolve();
 
     StrictDnsClusterImpl& parent_;

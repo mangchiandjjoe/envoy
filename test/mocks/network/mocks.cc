@@ -61,10 +61,7 @@ MockClientConnection::MockClientConnection() {
 
 MockClientConnection::~MockClientConnection() {}
 
-MockDnsResolver::MockDnsResolver() {
-  ON_CALL(*this, dispatcher()).WillByDefault(ReturnRef(dispatcher_));
-}
-
+MockDnsResolver::MockDnsResolver() {}
 MockDnsResolver::~MockDnsResolver() {}
 
 MockReadFilterCallbacks::MockReadFilterCallbacks() {

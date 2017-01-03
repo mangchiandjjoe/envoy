@@ -97,10 +97,7 @@ public:
   ~MockDnsResolver();
 
   // Network::DnsResolver
-  MOCK_METHOD0(dispatcher, Event::Dispatcher&());
   MOCK_METHOD2(resolve, void(const std::string& dns_name, ResolveCb callback));
-
-  testing::NiceMock<Event::MockDispatcher> dispatcher_;
 };
 
 class MockReadFilterCallbacks : public ReadFilterCallbacks {

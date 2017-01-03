@@ -25,9 +25,7 @@ public:
   SdsClusterImpl(const Json::Object& config, Runtime::Loader& runtime, Stats::Store& stats,
                  Ssl::ContextManager& ssl_context_manager, const SdsConfig& sds_config,
                  ClusterManager& cm, Event::Dispatcher& dispatcher,
-                 Runtime::RandomGenerator& random);
-
-  ~SdsClusterImpl();
+                 Runtime::RandomGenerator& random, bool added_via_api);
 
   /**
    * SDS clusters do not begin host refresh in the constructor because SDS typically depends on

@@ -22,9 +22,10 @@ public:
                      Network::DnsResolver& dns_resolver, Ssl::ContextManager& ssl_context_manager,
                      Runtime::Loader& runtime, Runtime::RandomGenerator& random,
                      const std::string& local_zone_name, const std::string& local_address,
-                     AccessLog::AccessLogManager& log_manager);
+                     AccessLog::AccessLogManager& log_manager, Event::Dispatcher& dispatcher);
 
   // Upstream::ClusterManager
+  bool addOrUpdatePrimaryCluster(const Json::Object& config) override;
   void setInitializedCb(std::function<void()> callback) override {
     if (pending_cluster_init_ == 0) {
       callback();
@@ -33,10 +34,10 @@ public:
     }
   }
 
-  std::unordered_map<std::string, ConstClusterPtr> clusters() override {
-    std::unordered_map<std::string, ConstClusterPtr> clusters_map;
+  ClusterInfoMap clusters() override {
+    ClusterInfoMap clusters_map;
     for (auto& cluster : primary_clusters_) {
-      clusters_map[cluster.first] = cluster.second;
+      clusters_map.emplace(cluster.first, *cluster.second.cluster_);
     }
 
     return clusters_map;
@@ -47,10 +48,11 @@ public:
                                                          ResourcePriority priority) override;
   Host::CreateConnectionData tcpConnForCluster(const std::string& cluster) override;
   Http::AsyncClient& httpAsyncClientForCluster(const std::string& cluster) override;
+  bool removePrimaryCluster(const std::string& cluster) override;
 
   void shutdown() override {
     for (auto& cluster : primary_clusters_) {
-      cluster.second->shutdown();
+      cluster.second.cluster_->shutdown();
     }
   }
 
@@ -72,27 +74,20 @@ private:
     };
 
     struct ClusterEntry {
-      ClusterEntry(ThreadLocalClusterManagerImpl& parent, ConstClusterPtr cluster,
-                   Runtime::Loader& runtime, Runtime::RandomGenerator& random,
-                   Stats::Store& stats_store, Event::Dispatcher& dispatcher,
-                   const std::string& local_zone_name, const std::string& local_address,
-                   const HostSet* local_host_set);
+      ClusterEntry(ThreadLocalClusterManagerImpl& parent, ClusterInfoPtr cluster);
 
       Http::ConnectionPool::Instance* connPool(ResourcePriority priority);
 
       ThreadLocalClusterManagerImpl& parent_;
       HostSetImpl host_set_;
       LoadBalancerPtr lb_;
-      ConstClusterPtr primary_cluster_;
+      ClusterInfoPtr cluster_info_;
       Http::AsyncClientImpl http_async_client_;
     };
 
     typedef std::unique_ptr<ClusterEntry> ClusterEntryPtr;
 
     ThreadLocalClusterManagerImpl(ClusterManagerImpl& parent, Event::Dispatcher& dispatcher,
-                                  Runtime::Loader& runtime, Runtime::RandomGenerator& random,
-                                  const std::string& local_zone_name,
-                                  const std::string& local_address,
                                   const Optional<std::string>& local_cluster_name);
     void drainConnPools(HostPtr old_host, ConnPoolsContainer& container);
     static void updateClusterMembership(const std::string& name, ConstHostVectorPtr hosts,
@@ -110,27 +105,40 @@ private:
     Event::Dispatcher& dispatcher_;
     std::unordered_map<std::string, ClusterEntryPtr> thread_local_clusters_;
     std::unordered_map<ConstHostPtr, ConnPoolsContainer> host_http_conn_pool_map_;
+    const HostSet* local_host_set_{};
+  };
+
+  struct PrimaryClusterData {
+    PrimaryClusterData(uint64_t config_hash, ClusterImplBasePtr&& cluster)
+        : config_hash_(config_hash), cluster_(std::move(cluster)) {}
+
+    const uint64_t config_hash_;
+    ClusterImplBasePtr cluster_;
   };
 
   virtual Http::ConnectionPool::InstancePtr allocateConnPool(Event::Dispatcher& dispatcher,
                                                              ConstHostPtr host, Stats::Store& store,
                                                              ResourcePriority priority) PURE;
-  void loadCluster(const Json::Object& cluster, Stats::Store& stats,
-                   Network::DnsResolver& dns_resolver, Ssl::ContextManager& ssl_context_manager,
-                   Runtime::Loader& runtime, Runtime::RandomGenerator& random,
-                   Outlier::EventLoggerPtr event_logger);
+  void loadCluster(const Json::Object& cluster, bool added_via_api);
   void postThreadLocalClusterUpdate(const ClusterImplBase& primary_cluster,
                                     const std::vector<HostPtr>& hosts_added,
                                     const std::vector<HostPtr>& hosts_removed);
 
-  ThreadLocal::Instance& tls_;
   Stats::Store& stats_;
+  ThreadLocal::Instance& tls_;
+  Network::DnsResolver& dns_resolver_;
+  Ssl::ContextManager& ssl_context_manager_;
+  Event::Dispatcher& dispatcher_;
+  Runtime::RandomGenerator& random_;
   uint32_t thread_local_slot_;
-  std::unordered_map<std::string, ClusterImplBasePtr> primary_clusters_;
+  std::unordered_map<std::string, PrimaryClusterData> primary_clusters_;
   std::function<void()> initialized_callback_;
   uint32_t pending_cluster_init_;
   Optional<SdsConfig> sds_config_;
   std::list<SdsClusterImpl*> sds_clusters_;
+  Outlier::EventLoggerPtr outlier_event_logger_;
+  const std::string local_zone_name_;
+  const std::string local_address_;
 };
 
 /**

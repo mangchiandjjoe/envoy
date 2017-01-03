@@ -25,6 +25,7 @@ public:
   MOCK_CONST_METHOD0(connectTimeout, std::chrono::milliseconds());
   MOCK_CONST_METHOD0(features, uint64_t());
   MOCK_CONST_METHOD0(httpCodecOptions, uint64_t());
+  MOCK_CONST_METHOD0(lbType, LoadBalancerType());
   MOCK_CONST_METHOD0(maintenanceMode, bool());
   MOCK_CONST_METHOD0(maxRequestsPerConnection, uint64_t());
   MOCK_CONST_METHOD0(name, const std::string&());
@@ -62,8 +63,8 @@ public:
   MOCK_CONST_METHOD0(healthyHostsPerZone, const std::vector<std::vector<HostPtr>>&());
 
   // Upstream::Cluster
+  MOCK_CONST_METHOD0(addedViaApi, bool());
   MOCK_CONST_METHOD0(info, ClusterInfoPtr());
-  MOCK_CONST_METHOD0(lbType, LoadBalancerType());
   MOCK_METHOD1(setInitializedCb, void(std::function<void()>));
   MOCK_METHOD0(shutdown, void());
 
@@ -86,13 +87,15 @@ public:
   }
 
   // Upstream::ClusterManager
+  MOCK_METHOD1(addOrUpdatePrimaryCluster, bool(const Json::Object& config));
   MOCK_METHOD1(setInitializedCb, void(std::function<void()>));
-  MOCK_METHOD0(clusters, std::unordered_map<std::string, ConstClusterPtr>());
+  MOCK_METHOD0(clusters, ClusterInfoMap());
   MOCK_METHOD1(get, ClusterInfoPtr(const std::string& cluster));
   MOCK_METHOD2(httpConnPoolForCluster, Http::ConnectionPool::Instance*(const std::string& cluster,
                                                                        ResourcePriority priority));
   MOCK_METHOD1(tcpConnForCluster_, MockHost::MockCreateConnectionData(const std::string& cluster));
   MOCK_METHOD1(httpAsyncClientForCluster, Http::AsyncClient&(const std::string& cluster));
+  MOCK_METHOD1(removePrimaryCluster, bool(const std::string& cluster));
   MOCK_METHOD0(shutdown, void());
 
   NiceMock<Http::ConnectionPool::MockInstance> conn_pool_;

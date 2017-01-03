@@ -67,13 +67,6 @@ ClusterInfoImpl::ClusterInfoImpl(const Json::Object& config, Runtime::Loader& ru
     Ssl::ContextConfigImpl context_config(*config.getObject("ssl_context"));
     ssl_ctx_ = &ssl_context_manager.createSslClientContext(stat_prefix_, stats, context_config);
   }
-}
-
-const ConstHostListsPtr ClusterImplBase::empty_host_lists_{new std::vector<std::vector<HostPtr>>()};
-
-ClusterImplBase::ClusterImplBase(const Json::Object& config, Runtime::Loader& runtime,
-                                 Stats::Store& stats, Ssl::ContextManager& ssl_context_manager)
-    : runtime_(runtime), info_(new ClusterInfoImpl(config, runtime, stats, ssl_context_manager)) {
 
   std::string string_lb_type = config.getString("lb_type");
   if (string_lb_type == "round_robin") {
@@ -86,6 +79,14 @@ ClusterImplBase::ClusterImplBase(const Json::Object& config, Runtime::Loader& ru
     throw EnvoyException(fmt::format("cluster: unknown LB type '{}'", string_lb_type));
   }
 }
+
+const ConstHostListsPtr ClusterImplBase::empty_host_lists_{new std::vector<std::vector<HostPtr>>()};
+
+ClusterImplBase::ClusterImplBase(const Json::Object& config, Runtime::Loader& runtime,
+                                 Stats::Store& stats, Ssl::ContextManager& ssl_context_manager,
+                                 bool added_via_api)
+    : runtime_(runtime), info_(new ClusterInfoImpl(config, runtime, stats, ssl_context_manager)),
+      added_via_api_(added_via_api) {}
 
 ConstHostVectorPtr ClusterImplBase::createHealthyHostList(const std::vector<HostPtr>& hosts) {
   HostVectorPtr healthy_list(new std::vector<HostPtr>());
@@ -202,8 +203,9 @@ ResourceManagerImplPtr ClusterInfoImpl::ResourceManagers::load(const Json::Objec
 }
 
 StaticClusterImpl::StaticClusterImpl(const Json::Object& config, Runtime::Loader& runtime,
-                                     Stats::Store& stats, Ssl::ContextManager& ssl_context_manager)
-    : ClusterImplBase(config, runtime, stats, ssl_context_manager) {
+                                     Stats::Store& stats, Ssl::ContextManager& ssl_context_manager,
+                                     bool added_via_api)
+    : ClusterImplBase(config, runtime, stats, ssl_context_manager, added_via_api) {
   std::vector<Json::ObjectPtr> hosts_json = config.getObjectArray("hosts");
   HostVectorPtr new_hosts(new std::vector<HostPtr>());
   for (Json::ObjectPtr& host : hosts_json) {
@@ -295,12 +297,13 @@ bool BaseDynamicClusterImpl::updateDynamicHostList(const std::vector<HostPtr>& n
 StrictDnsClusterImpl::StrictDnsClusterImpl(const Json::Object& config, Runtime::Loader& runtime,
                                            Stats::Store& stats,
                                            Ssl::ContextManager& ssl_context_manager,
-                                           Network::DnsResolver& dns_resolver)
-    : BaseDynamicClusterImpl(config, runtime, stats, ssl_context_manager),
+                                           Network::DnsResolver& dns_resolver,
+                                           Event::Dispatcher& dispatcher, bool added_via_api)
+    : BaseDynamicClusterImpl(config, runtime, stats, ssl_context_manager, added_via_api),
       dns_resolver_(dns_resolver), dns_refresh_rate_ms_(std::chrono::milliseconds(
                                        config.getInteger("dns_refresh_rate_ms", 5000))) {
   for (Json::ObjectPtr& host : config.getObjectArray("hosts")) {
-    resolve_targets_.emplace_back(new ResolveTarget(*this, host->getString("url")));
+    resolve_targets_.emplace_back(new ResolveTarget(*this, dispatcher, host->getString("url")));
   }
 }
 
@@ -319,11 +322,11 @@ void StrictDnsClusterImpl::updateAllHosts(const std::vector<HostPtr>& hosts_adde
 }
 
 StrictDnsClusterImpl::ResolveTarget::ResolveTarget(StrictDnsClusterImpl& parent,
+                                                   Event::Dispatcher& dispatcher,
                                                    const std::string& url)
     : parent_(parent), dns_address_(Network::Utility::hostFromUrl(url)),
       port_(Network::Utility::portFromUrl(url)),
-      resolve_timer_(
-          parent_.dns_resolver_.dispatcher().createTimer([this]() -> void { startResolve(); })) {
+      resolve_timer_(dispatcher.createTimer([this]() -> void { startResolve(); })) {
 
   startResolve();
 }

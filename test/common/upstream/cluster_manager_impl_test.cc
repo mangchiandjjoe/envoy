@@ -35,7 +35,7 @@ public:
   void create(const Json::Object& config) {
     cluster_manager_.reset(new ClusterManagerImplForTest(
         config, stats_, tls_, dns_resolver_, ssl_context_manager_, runtime_, random_, "us-east-1d",
-        "local_address", log_manager_));
+        "local_address", log_manager_, dispatcher_));
   }
 
   Stats::IsolatedStoreImpl stats_;
@@ -46,6 +46,7 @@ public:
   Ssl::ContextManagerImpl ssl_context_manager_{runtime_};
   std::unique_ptr<ClusterManagerImplForTest> cluster_manager_;
   AccessLog::MockAccessLogManager log_manager_;
+  NiceMock<Event::MockDispatcher> dispatcher_;
 };
 
 TEST_F(ClusterManagerImplTest, OutlierEventLog) {
@@ -231,7 +232,7 @@ TEST_F(ClusterManagerImplTest, TcpHealthChecker) {
 
   Json::ObjectPtr loader = Json::Factory::LoadFromString(json);
   Network::MockClientConnection* connection = new NiceMock<Network::MockClientConnection>();
-  EXPECT_CALL(dns_resolver_.dispatcher_, createClientConnection_("tcp://127.0.0.1:11001"))
+  EXPECT_CALL(dispatcher_, createClientConnection_("tcp://127.0.0.1:11001"))
       .WillOnce(Return(connection));
   create(*loader);
 }
@@ -275,15 +276,15 @@ TEST_F(ClusterManagerImplTest, ShutdownOrder) {
 
   Json::ObjectPtr loader = Json::Factory::LoadFromString(json);
   create(*loader);
-  ConstClusterPtr cluster = cluster_manager_->clusters().begin()->second;
-  EXPECT_EQ("cluster_1", cluster->info()->name());
+  const Cluster& cluster = cluster_manager_->clusters().begin()->second;
+  EXPECT_EQ("cluster_1", cluster.info()->name());
 
-  // Local reference, primary reference, thread local reference.
-  EXPECT_EQ(3U, cluster.use_count());
+  // Local reference, primary reference, thread local reference, host reference.
+  EXPECT_EQ(4U, cluster.info().use_count());
 
   // Thread local reference should be gone.
   tls_.shutdownThread();
-  EXPECT_EQ(2U, cluster.use_count());
+  EXPECT_EQ(3U, cluster.info().use_count());
 }
 
 TEST_F(ClusterManagerImplTest, DynamicHostRemove) {
@@ -303,7 +304,7 @@ TEST_F(ClusterManagerImplTest, DynamicHostRemove) {
   Json::ObjectPtr loader = Json::Factory::LoadFromString(json);
 
   Network::DnsResolver::ResolveCb dns_callback;
-  Event::MockTimer* dns_timer_ = new NiceMock<Event::MockTimer>(&dns_resolver_.dispatcher_);
+  Event::MockTimer* dns_timer_ = new NiceMock<Event::MockTimer>(&dispatcher_);
   EXPECT_CALL(dns_resolver_, resolve(_, _)).WillRepeatedly(SaveArg<1>(&dns_callback));
   create(*loader);
 
