@@ -68,7 +68,7 @@ private:
 class HttpNullTracer : public HttpTracer {
 public:
   // Tracing::HttpTracer
-  void initializeDriver(TracingDriver&&) override {}
+  void initializeDriver(TracingDriverPtr&&) override {}
   Span* startSpan(const Http::AccessLog::RequestInfo&, const Http::HeaderMap&,
                   const TracingConfig&) override {
     return nullptr;
@@ -110,7 +110,7 @@ public:
   HttpTracerImpl(Runtime::Loader& runtime, Stats::Store& stats);
 
   // Tracing::HttpTracer
-  void initializeDriver(TracingDriver&& driver) override;
+  void initializeDriver(TracingDriverPtr&& driver) override;
 
   Span* startSpan(const Http::AccessLog::RequestInfo&, const Http::HeaderMap&,
                   const TracingConfig&) override;

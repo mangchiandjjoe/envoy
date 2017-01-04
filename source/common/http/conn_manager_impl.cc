@@ -20,6 +20,7 @@
 #include "common/http/http2/codec_impl.h"
 #include "common/http/utility.h"
 #include "common/network/utility.h"
+#include "common/tracing/http_tracer_impl.h"
 
 namespace Http {
 
@@ -404,13 +405,12 @@ void ConnectionManagerImpl::ActiveStream::decodeHeaders(HeaderMapPtr&& headers, 
   decodeHeaders(nullptr, *request_headers_, end_stream);
 
   // At this point all filters passed, ready to start span and keep it on ActiveStream.
-
   Tracing::Decision decision =
       Tracing::HttpTracerUtility::isTracing(request_info_, *request_headers_);
   // CHARGE RIGHT STATS
   if (decision.is_tracing) {
     tracing_context_.reset(new Tracing::TracingContextImpl(connection_manager_.tracer_, *this));
-    tracing_context_->startSpan(request_info_, request_headers_);
+    tracing_context_->startSpan(request_info_, *request_headers_);
   }
 }
 

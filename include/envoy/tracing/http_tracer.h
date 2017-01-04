@@ -66,7 +66,7 @@ class HttpTracer {
 public:
   virtual ~HttpTracer() {}
 
-  virtual void initializeDriver(TracingDriver&& driver) PURE;
+  virtual void initializeDriver(TracingDriverPtr&& driver) PURE;
   virtual Span* startSpan(const Http::AccessLog::RequestInfo& request_info,
                           const Http::HeaderMap& request_headers,
                           const TracingConfig& tracing_config) PURE;

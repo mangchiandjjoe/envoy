@@ -5,7 +5,7 @@ namespace Tracing {
 MockHttpTracer::MockHttpTracer() {}
 MockHttpTracer::~MockHttpTracer() {}
 
-MockHttpSink::MockHttpSink() {}
-MockHttpSink::~MockHttpSink() {}
+MockTracingDriver::MockTracingDriver() {}
+MockTracingDriver::~MockTracingDriver() {}
 
 } // Tracing

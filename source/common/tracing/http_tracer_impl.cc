@@ -79,22 +79,12 @@ HttpTracerImpl::HttpTracerImpl(Runtime::Loader& runtime, Stats::Store& stats)
     : runtime_(runtime),
       stats_{HTTP_TRACER_STATS(POOL_COUNTER_PREFIX(stats, "tracing.http_tracer."))} {}
 
-void HttpTracerImpl::addSink(HttpSinkPtr&& sink) { sinks_.push_back(std::move(sink)); }
+void HttpTracerImpl::initializeDriver(TracingDriverPtr&& driver) { driver_ = std::move(driver); }
 
-void HttpTracerImpl::trace(const Http::HeaderMap* request_headers,
-                           const Http::HeaderMap* response_headers,
-                           const Http::AccessLog::RequestInfo& request_info,
-                           const TracingContext& tracing_context) {
-
-  populateStats(decision);
-
-  if (decision.is_tracing) {
-    stats_.doing_tracing_.inc();
-
-    for (HttpSinkPtr& sink : sinks_) {
-      sink->flushTrace(*request_headers, *response_headers, request_info, tracing_context);
-    }
-  }
+Span* HttpTracerImpl::startSpan(const Http::AccessLog::RequestInfo&, const Http::HeaderMap&,
+                                const TracingConfig&) {
+  // FIX FIX
+  return nullptr;
 }
 
 void HttpTracerImpl::populateStats(const Decision& decision) {
@@ -117,11 +107,11 @@ void HttpTracerImpl::populateStats(const Decision& decision) {
   }
 }
 
-LightStepRecorder::LightStepRecorder(const lightstep::TracerImpl& tracer, LightStepSink& sink,
+LightStepRecorder::LightStepRecorder(const lightstep::TracerImpl& tracer, LightStepDriver& driver,
                                      Event::Dispatcher& dispatcher)
-    : builder_(tracer), sink_(sink) {
+    : builder_(tracer), driver_(driver) {
   flush_timer_ = dispatcher.createTimer([this]() -> void {
-    sink_.tracerStats().timer_flushed_.inc();
+    driver_.tracerStats().timer_flushed_.inc();
     flushSpans();
     enableTimer();
   });
@@ -133,7 +123,7 @@ void LightStepRecorder::RecordSpan(lightstep::collector::Span&& span) {
   builder_.addSpan(std::move(span));
 
   uint64_t min_flush_spans =
-      sink_.runtime().snapshot().getInteger("tracing.lightstep.min_flush_spans", 5U);
+      driver_.runtime().snapshot().getInteger("tracing.lightstep.min_flush_spans", 5U);
   if (builder_.pendingSpans() == min_flush_spans) {
     flushSpans();
   }
@@ -146,44 +136,46 @@ bool LightStepRecorder::FlushWithTimeout(lightstep::Duration) {
 }
 
 std::unique_ptr<lightstep::Recorder>
-LightStepRecorder::NewInstance(LightStepSink& sink, Event::Dispatcher& dispatcher,
+LightStepRecorder::NewInstance(LightStepDriver& driver, Event::Dispatcher& dispatcher,
                                const lightstep::TracerImpl& tracer) {
-  return std::unique_ptr<lightstep::Recorder>(new LightStepRecorder(tracer, sink, dispatcher));
+  return std::unique_ptr<lightstep::Recorder>(new LightStepRecorder(tracer, driver, dispatcher));
 }
 
 void LightStepRecorder::enableTimer() {
   uint64_t flush_interval =
-      sink_.runtime().snapshot().getInteger("tracing.lightstep.flush_interval_ms", 1000U);
+      driver_.runtime().snapshot().getInteger("tracing.lightstep.flush_interval_ms", 1000U);
   flush_timer_->enableTimer(std::chrono::milliseconds(flush_interval));
 }
 
 void LightStepRecorder::flushSpans() {
   if (builder_.pendingSpans() != 0) {
-    sink_.tracerStats().spans_sent_.add(builder_.pendingSpans());
+    driver_.tracerStats().spans_sent_.add(builder_.pendingSpans());
     lightstep::collector::ReportRequest request;
     std::swap(request, builder_.pending());
 
-    Http::MessagePtr message = Grpc::Common::prepareHeaders(sink_.collectorCluster(),
+    Http::MessagePtr message = Grpc::Common::prepareHeaders(driver_.collectorCluster(),
                                                             lightstep::CollectorServiceFullName(),
                                                             lightstep::CollectorMethodName());
 
     message->body(Grpc::Common::serializeBody(std::move(request)));
 
     uint64_t timeout =
-        sink_.runtime().snapshot().getInteger("tracing.lightstep.request_timeout", 5000U);
-    sink_.clusterManager()
-        .httpAsyncClientForCluster(sink_.collectorCluster())
+        driver_.runtime().snapshot().getInteger("tracing.lightstep.request_timeout", 5000U);
+    driver_.clusterManager()
+        .httpAsyncClientForCluster(driver_.collectorCluster())
         .send(std::move(message), *this, std::chrono::milliseconds(timeout));
   }
 }
 
-LightStepSink::TlsLightStepTracer::TlsLightStepTracer(lightstep::Tracer tracer, LightStepSink& sink)
-    : tracer_(tracer), sink_(sink) {}
+LightStepDriver::TlsLightStepTracer::TlsLightStepTracer(lightstep::Tracer tracer,
+                                                        LightStepDriver& driver)
+    : tracer_(tracer), driver_(driver) {}
 
-LightStepSink::LightStepSink(const Json::Object& config, Upstream::ClusterManager& cluster_manager,
-                             Stats::Store& stats, const std::string& service_node,
-                             ThreadLocal::Instance& tls, Runtime::Loader& runtime,
-                             std::unique_ptr<lightstep::TracerOptions> options)
+LightStepDriver::LightStepDriver(const Json::Object& config,
+                                 Upstream::ClusterManager& cluster_manager, Stats::Store& stats,
+                                 const std::string& service_node, ThreadLocal::Instance& tls,
+                                 Runtime::Loader& runtime,
+                                 std::unique_ptr<lightstep::TracerOptions> options)
     : collector_cluster_(config.getString("collector_cluster")), cm_(cluster_manager),
       stats_store_(stats),
       tracer_stats_{LIGHTSTEP_TRACER_STATS(POOL_COUNTER_PREFIX(stats, "tracing.lightstep."))},
@@ -208,8 +200,8 @@ LightStepSink::LightStepSink(const Json::Object& config, Upstream::ClusterManage
   });
 }
 
-std::string LightStepSink::buildRequestLine(const Http::HeaderMap& request_headers,
-                                            const Http::AccessLog::RequestInfo& info) {
+std::string LightStepDriver::buildRequestLine(const Http::HeaderMap& request_headers,
+                                              const Http::AccessLog::RequestInfo& info) {
   std::string path = request_headers.EnvoyOriginalPath()
                          ? request_headers.EnvoyOriginalPath()->value().c_str()
                          : request_headers.Path()->value().c_str();
@@ -223,15 +215,17 @@ std::string LightStepSink::buildRequestLine(const Http::HeaderMap& request_heade
                      Http::AccessLog::AccessLogFormatUtils::protocolToString(info.protocol()));
 }
 
-std::string LightStepSink::buildResponseCode(const Http::AccessLog::RequestInfo& info) {
+std::string LightStepDriver::buildResponseCode(const Http::AccessLog::RequestInfo& info) {
   return info.responseCode().valid() ? std::to_string(info.responseCode().value()) : "0";
 }
 
+/*
 static std::string valueOrDefault(const Http::HeaderEntry* header, const char* default_value) {
   return header ? header->value().c_str() : default_value;
-}
+}*/
 
-void LightStepSink::flushTrace(const Http::HeaderMap& request_headers, const Http::HeaderMap&,
+/*
+void LightStepDriver::flushTrace(const Http::HeaderMap& request_headers, const Http::HeaderMap&,
                                const Http::AccessLog::RequestInfo& request_info,
                                const TracingContext& tracing_context) {
   lightstep::Span span = tls_.getTyped<TlsLightStepTracer>(tls_slot_).tracer_.StartSpan(
@@ -263,9 +257,10 @@ void LightStepSink::flushTrace(const Http::HeaderMap& request_headers, const Htt
 
   span.Finish();
 }
+*/
 
 void LightStepRecorder::onFailure(Http::AsyncClient::FailureReason) {
-  Grpc::Common::chargeStat(sink_.statsStore(), sink_.collectorCluster(),
+  Grpc::Common::chargeStat(driver_.statsStore(), driver_.collectorCluster(),
                            lightstep::CollectorServiceFullName(), lightstep::CollectorMethodName(),
                            false);
 }
@@ -274,11 +269,11 @@ void LightStepRecorder::onSuccess(Http::MessagePtr&& msg) {
   try {
     Grpc::Common::validateResponse(*msg);
 
-    Grpc::Common::chargeStat(sink_.statsStore(), sink_.collectorCluster(),
+    Grpc::Common::chargeStat(driver_.statsStore(), driver_.collectorCluster(),
                              lightstep::CollectorServiceFullName(),
                              lightstep::CollectorMethodName(), true);
   } catch (const Grpc::Exception& ex) {
-    Grpc::Common::chargeStat(sink_.statsStore(), sink_.collectorCluster(),
+    Grpc::Common::chargeStat(driver_.statsStore(), driver_.collectorCluster(),
                              lightstep::CollectorServiceFullName(),
                              lightstep::CollectorMethodName(), false);
   }

@@ -4,34 +4,55 @@
 
 namespace Tracing {
 
+class MockTracingConfig : public TracingConfig {
+public:
+  MockTracingConfig() {}
+  ~MockTracingConfig() {}
+
+  MOCK_CONST_METHOD0(operationName, const std::string&());
+};
+
+class MockSpan : public Span {
+public:
+  MockSpan() {}
+  ~MockSpan() {}
+
+  MOCK_METHOD2(finishSpan, void((const Http::AccessLog::RequestInfo& request_info,
+                                 const Http::HeaderMap& response_headers)));
+};
+
 class MockTracingContext : public TracingContext {
 public:
-  MOCK_CONST_METHOD0(operationName, const std::string&());
+  MockTracingContext() {}
+  ~MockTracingContext() {}
+
+  MOCK_METHOD2(startSpan, void(const Http::AccessLog::RequestInfo& request_info,
+                               const Http::HeaderMap& request_headers));
+  MOCK_METHOD2(finishSpan, void(const Http::AccessLog::RequestInfo& request_info,
+                                const Http::HeaderMap* response_headers));
 };
 
 class MockHttpTracer : public HttpTracer {
 public:
-  MockHttpTracer();
-  ~MockHttpTracer();
+  MockHttpTracer() {}
+  ~MockHttpTracer() {}
 
-  void addSink(HttpSinkPtr&& sink) override { addSink_(sink); }
+  void initializeDriver(TracingDriverPtr&& driver) override { initializeDriver_(driver); }
 
-  MOCK_METHOD1(addSink_, void(HttpSinkPtr& sink));
-  MOCK_METHOD4(trace,
-               void(const Http::HeaderMap* request_headers, const Http::HeaderMap* response_headers,
-                    const Http::AccessLog::RequestInfo& request_info,
-                    const TracingContext& tracing_context));
+  MOCK_METHOD1(initializeDriver_, void(TracingDriverPtr& driver));
+  MOCK_METHOD3(startSpan,
+               Span*(const Http::AccessLog::RequestInfo& request_info,
+                     const Http::HeaderMap& request_headers, const TracingConfig& tracing_config));
 };
 
-class MockHttpSink : public HttpSink {
+class MockTracingDriver : public TracingDriver {
 public:
-  MockHttpSink();
-  ~MockHttpSink();
+  MockTracingDriver() {}
+  ~MockTracingDriver() {}
 
-  MOCK_METHOD4(flushTrace,
-               void(const Http::HeaderMap& request_headers, const Http::HeaderMap& response_headers,
-                    const Http::AccessLog::RequestInfo& request_info,
-                    const TracingContext& tracing_context));
+  MOCK_METHOD3(startSpan,
+               Span*(const Http::AccessLog::RequestInfo& request_info,
+                     const Http::HeaderMap& request_headers, const TracingConfig& tracing_config));
 };
 
 } // Tracing
