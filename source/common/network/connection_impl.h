@@ -1,14 +1,23 @@
 #pragma once
 
-#include "filter_manager_impl.h"
+#include <atomic>
+#include <cstdint>
+#include <list>
+#include <memory>
+#include <string>
 
+#include "envoy/common/optional.h"
+#include "envoy/event/dispatcher.h"
 #include "envoy/network/connection.h"
+#include "envoy/network/transport_socket.h"
 
-#include "common/buffer/buffer_impl.h"
+#include "common/buffer/watermark_buffer.h"
 #include "common/common/logger.h"
-#include "common/event/dispatcher_impl.h"
 #include "common/event/libevent.h"
+#include "common/network/filter_manager_impl.h"
+#include "common/ssl/ssl_socket.h"
 
+namespace Envoy {
 namespace Network {
 
 /**
@@ -35,67 +44,94 @@ public:
  */
 class ConnectionImpl : public virtual Connection,
                        public BufferSource,
+                       public TransportSocketCallbacks,
                        protected Logger::Loggable<Logger::Id::connection> {
 public:
-  ConnectionImpl(Event::DispatcherImpl& dispatcher, int fd, const std::string& remote_address);
+  // TODO(lizan): Remove the old style constructor when factory is ready.
+  ConnectionImpl(Event::Dispatcher& dispatcher, ConnectionSocketPtr&& socket, bool connected);
+
+  ConnectionImpl(Event::Dispatcher& dispatcher, ConnectionSocketPtr&& socket,
+                 TransportSocketPtr&& transport_socket, bool connected);
+
   ~ConnectionImpl();
 
   // Network::FilterManager
-  void addWriteFilter(WriteFilterPtr filter) override;
-  void addFilter(FilterPtr filter) override;
-  void addReadFilter(ReadFilterPtr filter) override;
-  void initializeReadFilters() override;
+  void addWriteFilter(WriteFilterSharedPtr filter) override;
+  void addFilter(FilterSharedPtr filter) override;
+  void addReadFilter(ReadFilterSharedPtr filter) override;
+  bool initializeReadFilters() override;
 
   // Network::Connection
   void addConnectionCallbacks(ConnectionCallbacks& cb) override;
+  void addBytesSentCallback(BytesSentCb cb) override;
   void close(ConnectionCloseType type) override;
   Event::Dispatcher& dispatcher() override;
-  uint64_t id() override;
-  std::string nextProtocol() override { return ""; }
+  uint64_t id() const override;
+  std::string nextProtocol() const override { return transport_socket_->protocol(); }
   void noDelay(bool enable) override;
   void readDisable(bool disable) override;
-  bool readEnabled() override;
-  const std::string& remoteAddress() override { return remote_address_; }
-  void setBufferStats(const BufferStats& stats) override;
-  Ssl::Connection* ssl() override { return nullptr; }
-  State state() override;
+  void detectEarlyCloseWhenReadDisabled(bool value) override { detect_early_close_ = value; }
+  bool readEnabled() const override;
+  const Address::InstanceConstSharedPtr& remoteAddress() const override {
+    return socket_->remoteAddress();
+  }
+  const Address::InstanceConstSharedPtr& localAddress() const override {
+    return socket_->localAddress();
+  }
+  void setConnectionStats(const ConnectionStats& stats) override;
+  Ssl::Connection* ssl() override { return transport_socket_->ssl(); }
+  const Ssl::Connection* ssl() const override { return transport_socket_->ssl(); }
+  State state() const override;
   void write(Buffer::Instance& data) override;
+  void setBufferLimits(uint32_t limit) override;
+  uint32_t bufferLimit() const override { return read_buffer_limit_; }
+  bool localAddressRestored() const override { return socket_->localAddressRestored(); }
+  bool aboveHighWatermark() const override { return above_high_watermark_; }
+  const ConnectionSocket::OptionsSharedPtr& socketOptions() const override {
+    return socket_->options();
+  }
 
   // Network::BufferSource
   Buffer::Instance& getReadBuffer() override { return read_buffer_; }
   Buffer::Instance& getWriteBuffer() override { return *current_write_buffer_; }
 
+  // Network::TransportSocketCallbacks
+  int fd() const override { return socket_->fd(); }
+  Connection& connection() override { return *this; }
+  void raiseEvent(ConnectionEvent event) override;
+  // Should the read buffer be drained?
+  bool shouldDrainReadBuffer() override {
+    return read_buffer_limit_ > 0 && read_buffer_.length() >= read_buffer_limit_;
+  }
+  // Mark read buffer ready to read in the event loop. This is used when yielding following
+  // shouldDrainReadBuffer().
+  // TODO(htuch): While this is the basis for also yielding to other connections to provide some
+  // fair sharing of CPU resources, the underlying event loop does not make any fairness guarantees.
+  // Reconsider how to make fairness happen.
+  void setReadBufferReady() override { file_event_->activate(Event::FileReadyType::Read); }
+
 protected:
-  enum class PostIoAction { Close, KeepOpen };
+  void closeSocket(ConnectionEvent close_type);
 
-  struct IoResult {
-    PostIoAction action_;
-    uint64_t bytes_processed_;
-  };
+  void onLowWatermark();
+  void onHighWatermark();
 
-  virtual void closeSocket(uint32_t close_type);
-  void doConnect(const sockaddr* addr, socklen_t addrlen);
-  void raiseEvents(uint32_t events);
-
+  TransportSocketPtr transport_socket_;
   FilterManagerImpl filter_manager_;
-  const std::string remote_address_;
+  ConnectionSocketPtr socket_;
   Buffer::OwnedImpl read_buffer_;
-  Buffer::OwnedImpl write_buffer_;
+  // This must be a WatermarkBuffer, but as it is created by a factory the ConnectionImpl only has
+  // a generic pointer.
+  Buffer::InstancePtr write_buffer_;
+  uint32_t read_buffer_limit_ = 0;
+
+protected:
+  bool connecting_{false};
+  ConnectionEvent immediate_error_event_{ConnectionEvent::Connected};
+  bool bind_error_{false};
+  Event::FileEventPtr file_event_;
 
 private:
-  // clang-format off
-  struct InternalState {
-    static const uint32_t ReadEnabled              = 0x1;
-    static const uint32_t Connecting               = 0x2;
-    static const uint32_t CloseWithFlush           = 0x4;
-    static const uint32_t ImmediateConnectionError = 0x8;
-  };
-  // clang-format on
-
-  virtual IoResult doReadFromSocket();
-  virtual IoResult doWriteToSocket();
-  void onBufferChange(ConnectionBufferType type, uint64_t old_size, int64_t delta);
-  virtual void onConnected();
   void onFileEvent(uint32_t events);
   void onRead(uint64_t read_buffer_size);
   void onReadReady();
@@ -105,16 +141,22 @@ private:
 
   static std::atomic<uint64_t> next_global_id_;
 
-  Event::DispatcherImpl& dispatcher_;
-  int fd_{-1};
-  Event::FileEventPtr file_event_;
+  Event::Dispatcher& dispatcher_;
   const uint64_t id_;
   std::list<ConnectionCallbacks*> callbacks_;
-  uint32_t state_{InternalState::ReadEnabled};
+  std::list<BytesSentCb> bytes_sent_callbacks_;
+  bool read_enabled_{true};
+  bool close_with_flush_{false};
+  bool above_high_watermark_{false};
+  bool detect_early_close_{true};
   Buffer::Instance* current_write_buffer_{};
   uint64_t last_read_buffer_size_{};
   uint64_t last_write_buffer_size_{};
-  std::unique_ptr<BufferStats> buffer_stats_;
+  std::unique_ptr<ConnectionStats> connection_stats_;
+  // Tracks the number of times reads have been disabled. If N different components call
+  // readDisabled(true) this allows the connection to only resume reads when readDisabled(false)
+  // has been called N times.
+  uint32_t read_disable_count_{0};
 };
 
 /**
@@ -122,26 +164,15 @@ private:
  */
 class ClientConnectionImpl : public ConnectionImpl, virtual public ClientConnection {
 public:
-  ClientConnectionImpl(Event::DispatcherImpl& dispatcher, int fd, const std::string& url);
-
-  static Network::ClientConnectionPtr create(Event::DispatcherImpl& dispatcher,
-                                             const std::string& url);
-};
-
-class TcpClientConnectionImpl : public ClientConnectionImpl {
-public:
-  TcpClientConnectionImpl(Event::DispatcherImpl& dispatcher, const std::string& url);
+  ClientConnectionImpl(Event::Dispatcher& dispatcher,
+                       const Address::InstanceConstSharedPtr& remote_address,
+                       const Address::InstanceConstSharedPtr& source_address,
+                       Network::TransportSocketPtr&& transport_socket,
+                       const Network::ConnectionSocket::OptionsSharedPtr& options);
 
   // Network::ClientConnection
   void connect() override;
 };
 
-class UdsClientConnectionImpl final : public ClientConnectionImpl {
-public:
-  UdsClientConnectionImpl(Event::DispatcherImpl& dispatcher, const std::string& url);
-
-  // Network::ClientConnection
-  void connect() override;
-};
-
-} // Network
+} // namespace Network
+} // namespace Envoy

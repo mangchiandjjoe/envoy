@@ -1,17 +1,21 @@
 #pragma once
 
+#include <cstdint>
+#include <limits>
+#include <memory>
+
 #include "envoy/buffer/buffer.h"
 #include "envoy/common/pure.h"
 #include "envoy/http/header_map.h"
 #include "envoy/http/protocol.h"
 
+namespace Envoy {
 namespace Http {
 
 class Stream;
 
 /**
  * Encodes an HTTP stream.
- * NOTE: Currently we do not support trailers/intermediate header frames.
  */
 class StreamEncoder {
 public:
@@ -45,7 +49,6 @@ public:
 
 /**
  * Decodes an HTTP stream. These are callbacks fired into a sink.
- * NOTE: Currently we do not support trailers/intermediate header frames.
  */
 class StreamDecoder {
 public:
@@ -104,6 +107,17 @@ public:
    * @param reason supplies the reset reason.
    */
   virtual void onResetStream(StreamResetReason reason) PURE;
+
+  /**
+   * Fires when a stream, or the connection the stream is sending to, goes over its high watermark.
+   */
+  virtual void onAboveWriteBufferHighWatermark() PURE;
+
+  /**
+   * Fires when a stream, or the connection the stream is sending to, goes from over its high
+   * watermark to under its low watermark.
+   */
+  virtual void onBelowWriteBufferLowWatermark() PURE;
 };
 
 /**
@@ -130,6 +144,21 @@ public:
    * @param reason supplies the reset reason.
    */
   virtual void resetStream(StreamResetReason reason) PURE;
+
+  /**
+   * Enable/disable further data from this stream.
+   * Cessation of data may not be immediate. For example, for HTTP/2 this may stop further flow
+   * control window updates which will result in the peer eventually stopping sending data.
+   * @param disable informs if reads should be disabled (true) or re-enabled (false).
+   */
+  virtual void readDisable(bool disable) PURE;
+
+  /*
+   * Return the number of bytes this stream is allowed to buffer, or 0 if there is no limit
+   * configured.
+   * @return uint32_t the stream's configured buffer limits.
+   */
+  virtual uint32_t bufferLimit() PURE;
 };
 
 /**
@@ -146,11 +175,56 @@ public:
 };
 
 /**
- * A list of options that can be specified when creating a codec.
+ * HTTP/1.* Codec settings
  */
-class CodecOptions {
-public:
-  static const uint64_t NoCompression = 0x1;
+struct Http1Settings {
+  // Enable codec to parse absolute uris. This enables forward/explicit proxy support for non TLS
+  // traffic
+  bool allow_absolute_url_{false};
+};
+
+/**
+ * HTTP/2 codec settings
+ */
+struct Http2Settings {
+  // TODO(jwfang): support other HTTP/2 settings
+  uint32_t hpack_table_size_{DEFAULT_HPACK_TABLE_SIZE};
+  uint32_t max_concurrent_streams_{DEFAULT_MAX_CONCURRENT_STREAMS};
+  uint32_t initial_stream_window_size_{DEFAULT_INITIAL_STREAM_WINDOW_SIZE};
+  uint32_t initial_connection_window_size_{DEFAULT_INITIAL_CONNECTION_WINDOW_SIZE};
+
+  // disable HPACK compression
+  static const uint32_t MIN_HPACK_TABLE_SIZE = 0;
+  // initial value from HTTP/2 spec, same as NGHTTP2_DEFAULT_HEADER_TABLE_SIZE from nghttp2
+  static const uint32_t DEFAULT_HPACK_TABLE_SIZE = (1 << 12);
+  // no maximum from HTTP/2 spec, use unsigned 32-bit maximum
+  static const uint32_t MAX_HPACK_TABLE_SIZE = std::numeric_limits<uint32_t>::max();
+
+  // TODO(jwfang): make this 0, the HTTP/2 spec minimum
+  static const uint32_t MIN_MAX_CONCURRENT_STREAMS = 1;
+  // defaults to maximum, same as nghttp2
+  static const uint32_t DEFAULT_MAX_CONCURRENT_STREAMS = (1U << 31) - 1;
+  // no maximum from HTTP/2 spec, total streams is unsigned 32-bit maximum,
+  // one-side (client/server) is half that, and we need to exclude stream 0.
+  // same as NGHTTP2_INITIAL_MAX_CONCURRENT_STREAMS from nghttp2
+  static const uint32_t MAX_MAX_CONCURRENT_STREAMS = (1U << 31) - 1;
+
+  // initial value from HTTP/2 spec, same as NGHTTP2_INITIAL_WINDOW_SIZE from nghttp2
+  // NOTE: we only support increasing window size now, so this is also the minimum
+  // TODO(jwfang): make this 0 to support decrease window size
+  static const uint32_t MIN_INITIAL_STREAM_WINDOW_SIZE = (1 << 16) - 1;
+  // initial value from HTTP/2 spec is 65535, but we want more (256MiB)
+  static const uint32_t DEFAULT_INITIAL_STREAM_WINDOW_SIZE = 256 * 1024 * 1024;
+  // maximum from HTTP/2 spec, same as NGHTTP2_MAX_WINDOW_SIZE from nghttp2
+  static const uint32_t MAX_INITIAL_STREAM_WINDOW_SIZE = (1U << 31) - 1;
+
+  // CONNECTION_WINDOW_SIZE is similar to STREAM_WINDOW_SIZE, but for connection-level window
+  // TODO(jwfang): make this 0 to support decrease window size
+  static const uint32_t MIN_INITIAL_CONNECTION_WINDOW_SIZE = (1 << 16) - 1;
+  // nghttp2's default connection-level window equals to its stream-level,
+  // our default connection-level window also equals to our stream-level
+  static const uint32_t DEFAULT_INITIAL_CONNECTION_WINDOW_SIZE = 256 * 1024 * 1024;
+  static const uint32_t MAX_INITIAL_CONNECTION_WINDOW_SIZE = (1U << 31) - 1;
 };
 
 /**
@@ -188,6 +262,36 @@ public:
    *              reasons (e.g, needing window updates).
    */
   virtual bool wantsToWrite() PURE;
+
+  /**
+   * Called when the underlying Network::Connection goes over its high watermark.
+   */
+  virtual void onUnderlyingConnectionAboveWriteBufferHighWatermark() PURE;
+
+  /**
+   * Called when the underlying Network::Connection goes from over its high watermark to under its
+   * low watermark.
+   */
+  virtual void onUnderlyingConnectionBelowWriteBufferLowWatermark() PURE;
+};
+
+/**
+ * Callbacks for downstream connection watermark limits.
+ */
+class DownstreamWatermarkCallbacks {
+public:
+  virtual ~DownstreamWatermarkCallbacks() {}
+
+  /**
+   * Called when the downstream connection or stream goes over its high watermark.
+   */
+  virtual void onAboveWriteBufferHighWatermark() PURE;
+
+  /**
+   * Called when the downstream connection or stream goes from over its high watermark to under its
+   * low watermark.
+   */
+  virtual void onBelowWriteBufferLowWatermark() PURE;
 };
 
 /**
@@ -226,4 +330,5 @@ public:
 
 typedef std::unique_ptr<ClientConnection> ClientConnectionPtr;
 
-} // Http
+} // namespace Http
+} // namespace Envoy

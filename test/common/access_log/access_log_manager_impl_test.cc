@@ -1,3 +1,5 @@
+#include <memory>
+
 #include "common/access_log/access_log_manager_impl.h"
 #include "common/stats/stats_impl.h"
 
@@ -6,9 +8,13 @@
 #include "test/mocks/event/mocks.h"
 #include "test/mocks/filesystem/mocks.h"
 
-using testing::_;
-using testing::Return;
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
+using testing::Return;
+using testing::_;
+
+namespace Envoy {
 namespace AccessLog {
 
 TEST(AccessLogManagerImpl, reopenAllFiles) {
@@ -34,4 +40,5 @@ TEST(AccessLogManagerImpl, reopenAllFiles) {
   access_log_manager.reopen();
 }
 
-} // AccessLog
+} // namespace AccessLog
+} // namespace Envoy

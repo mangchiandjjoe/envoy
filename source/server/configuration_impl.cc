@@ -1,193 +1,153 @@
-#include "configuration_impl.h"
+#include "server/configuration_impl.h"
 
+#include <chrono>
+#include <list>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "envoy/config/trace/v2/trace.pb.h"
 #include "envoy/network/connection.h"
 #include "envoy/runtime/runtime.h"
 #include "envoy/server/instance.h"
 #include "envoy/ssl/context_manager.h"
 
+#include "common/common/assert.h"
 #include "common/common/utility.h"
+#include "common/config/lds_json.h"
+#include "common/config/utility.h"
+#include "common/protobuf/utility.h"
 #include "common/ratelimit/ratelimit_impl.h"
-#include "common/ssl/context_config_impl.h"
 #include "common/tracing/http_tracer_impl.h"
-#include "common/upstream/cluster_manager_impl.h"
 
+namespace Envoy {
 namespace Server {
 namespace Configuration {
 
-void FilterChainUtility::buildFilterChain(Network::FilterManager& filter_manager,
-                                          const std::list<NetworkFilterFactoryCb>& factories) {
+bool FilterChainUtility::buildFilterChain(Network::FilterManager& filter_manager,
+                                          const std::vector<NetworkFilterFactoryCb>& factories) {
   for (const NetworkFilterFactoryCb& factory : factories) {
     factory(filter_manager);
   }
 
-  filter_manager.initializeReadFilters();
+  return filter_manager.initializeReadFilters();
 }
 
-MainImpl::MainImpl(Server::Instance& server) : server_(server) {}
-
-void MainImpl::initialize(const Json::Object& json) {
-  cluster_manager_.reset(new Upstream::ProdClusterManagerImpl(
-      *json.getObject("cluster_manager"), server_.stats(), server_.threadLocal(),
-      server_.dnsResolver(), server_.sslContextManager(), server_.runtime(), server_.random(),
-      server_.options().serviceZone(), server_.getLocalAddress(), server_.accessLogManager()));
-
-  std::vector<Json::ObjectPtr> listeners = json.getObjectArray("listeners");
-  log().info("loading {} listener(s)", listeners.size());
-  for (size_t i = 0; i < listeners.size(); i++) {
-    log().info("listener #{}:", i);
-    listeners_.emplace_back(
-        Server::Configuration::ListenerPtr{new ListenerConfig(*this, *listeners[i])});
+bool FilterChainUtility::buildFilterChain(Network::ListenerFilterManager& filter_manager,
+                                          const std::vector<ListenerFilterFactoryCb>& factories) {
+  for (const ListenerFilterFactoryCb& factory : factories) {
+    factory(filter_manager);
   }
 
-  if (json.hasObject("statsd_local_udp_port")) {
-    statsd_udp_port_.value(json.getInteger("statsd_local_udp_port"));
+  return true;
+}
+
+void MainImpl::initialize(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,
+                          Instance& server,
+                          Upstream::ClusterManagerFactory& cluster_manager_factory) {
+  cluster_manager_ = cluster_manager_factory.clusterManagerFromProto(
+      bootstrap, server.stats(), server.threadLocal(), server.runtime(), server.random(),
+      server.localInfo(), server.accessLogManager());
+
+  const auto& listeners = bootstrap.static_resources().listeners();
+  ENVOY_LOG(info, "loading {} listener(s)", listeners.size());
+  for (ssize_t i = 0; i < listeners.size(); i++) {
+    ENVOY_LOG(debug, "listener #{}:", i);
+    server.listenerManager().addOrUpdateListener(listeners[i], false);
   }
 
-  if (json.hasObject("statsd_tcp_cluster_name")) {
-    statsd_tcp_cluster_name_.value(json.getString("statsd_tcp_cluster_name"));
+  if (bootstrap.dynamic_resources().has_lds_config()) {
+    lds_api_.reset(new LdsApi(bootstrap.dynamic_resources().lds_config(), *cluster_manager_,
+                              server.dispatcher(), server.random(), server.initManager(),
+                              server.localInfo(), server.stats(), server.listenerManager()));
   }
 
   stats_flush_interval_ =
-      std::chrono::milliseconds(json.getInteger("stats_flush_interval_ms", 5000));
+      std::chrono::milliseconds(PROTOBUF_GET_MS_OR_DEFAULT(bootstrap, stats_flush_interval, 5000));
 
-  if (json.hasObject("tracing")) {
-    initializeTracers(*json.getObject("tracing"));
-  } else {
-    http_tracer_.reset(new Tracing::HttpNullTracer());
-  }
+  const auto& watchdog = bootstrap.watchdog();
+  watchdog_miss_timeout_ =
+      std::chrono::milliseconds(PROTOBUF_GET_MS_OR_DEFAULT(watchdog, miss_timeout, 200));
+  watchdog_megamiss_timeout_ =
+      std::chrono::milliseconds(PROTOBUF_GET_MS_OR_DEFAULT(watchdog, megamiss_timeout, 1000));
+  watchdog_kill_timeout_ =
+      std::chrono::milliseconds(PROTOBUF_GET_MS_OR_DEFAULT(watchdog, kill_timeout, 0));
+  watchdog_multikill_timeout_ =
+      std::chrono::milliseconds(PROTOBUF_GET_MS_OR_DEFAULT(watchdog, multikill_timeout, 0));
 
-  if (json.hasObject("rate_limit_service")) {
-    Json::ObjectPtr rate_limit_service_config = json.getObject("rate_limit_service");
-    std::string type = rate_limit_service_config->getString("type");
-    if (type == "grpc_service") {
-      ratelimit_client_factory_.reset(new RateLimit::GrpcFactoryImpl(
-          *rate_limit_service_config->getObject("config"), *cluster_manager_, server_.stats()));
-    } else {
-      throw EnvoyException(fmt::format("unknown rate limit service type '{}'", type));
-    }
+  initializeTracers(bootstrap.tracing(), server);
+
+  if (bootstrap.has_rate_limit_service()) {
+    ratelimit_client_factory_.reset(
+        new RateLimit::GrpcFactoryImpl(bootstrap.rate_limit_service(),
+                                       cluster_manager_->grpcAsyncClientManager(), server.stats()));
   } else {
     ratelimit_client_factory_.reset(new RateLimit::NullFactoryImpl());
   }
+
+  initializeStatsSinks(bootstrap, server);
 }
 
-void MainImpl::initializeTracers(const Json::Object& tracing_configuration) {
-  log().info("loading tracing configuration");
+void MainImpl::initializeTracers(const envoy::config::trace::v2::Tracing& configuration,
+                                 Instance& server) {
+  ENVOY_LOG(info, "loading tracing configuration");
 
-  // Initialize http sinks
-  if (tracing_configuration.hasObject("http")) {
-    http_tracer_.reset(new Tracing::HttpTracerImpl(server_.runtime(), server_.stats()));
-
-    Json::ObjectPtr http_tracer_config = tracing_configuration.getObject("http");
-
-    if (http_tracer_config->hasObject("sinks")) {
-      std::vector<Json::ObjectPtr> sinks = http_tracer_config->getObjectArray("sinks");
-      log().info(fmt::format("  loading {} http sink(s):", sinks.size()));
-
-      for (const Json::ObjectPtr& sink : sinks) {
-        std::string type = sink->getString("type");
-        log().info(fmt::format("    loading {}", type));
-
-        if (type == "lightstep") {
-          ::Runtime::RandomGenerator& rand = server_.random();
-          std::unique_ptr<lightstep::TracerOptions> opts(new lightstep::TracerOptions());
-          opts->access_token = server_.api().fileReadToEnd(sink->getString("access_token_file"));
-          StringUtil::rtrim(opts->access_token);
-
-          opts->tracer_attributes["lightstep.component_name"] =
-              server_.options().serviceClusterName();
-          opts->guid_generator = [&rand]() { return rand.random(); };
-
-          http_tracer_->addSink(Tracing::HttpSinkPtr{new Tracing::LightStepSink(
-              *sink->getObject("config"), *cluster_manager_, server_.stats(),
-              server_.options().serviceNodeName(), server_.threadLocal(), server_.runtime(),
-              std::move(opts))});
-        } else {
-          throw EnvoyException(fmt::format("unsupported sink type: '{}'", type));
-        }
-      }
-    }
-  } else {
-    throw EnvoyException("incorrect tracing configuration");
+  if (!configuration.has_http()) {
+    http_tracer_.reset(new Tracing::HttpNullTracer());
+    return;
   }
+
+  if (server.localInfo().clusterName().empty()) {
+    throw EnvoyException("cluster name must be defined if tracing is enabled. See "
+                         "--service-cluster option.");
+  }
+
+  // Initialize tracing driver.
+  std::string type = configuration.http().name();
+  ENVOY_LOG(info, "  loading tracing driver: {}", type);
+
+  // TODO(htuch): Make this dynamically pluggable one day.
+  Json::ObjectSharedPtr driver_config =
+      MessageUtil::getJsonObjectFromMessage(configuration.http().config());
+
+  // Now see if there is a factory that will accept the config.
+  auto& factory = Config::Utility::getAndCheckFactory<HttpTracerFactory>(type);
+  http_tracer_ = factory.createHttpTracer(*driver_config, server, *cluster_manager_);
 }
 
-const std::list<Server::Configuration::ListenerPtr>& MainImpl::listeners() { return listeners_; }
+void MainImpl::initializeStatsSinks(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,
+                                    Instance& server) {
+  ENVOY_LOG(info, "loading stats sink configuration");
 
-MainImpl::ListenerConfig::ListenerConfig(MainImpl& parent, Json::Object& json)
-    : parent_(parent), port_(json.getInteger("port")) {
-  log().info("  port={}", port_);
+  for (const envoy::config::metrics::v2::StatsSink& sink_object : bootstrap.stats_sinks()) {
+    // Generate factory and translate stats sink custom config
+    auto& factory = Config::Utility::getAndCheckFactory<StatsSinkFactory>(sink_object.name());
+    ProtobufTypes::MessagePtr message =
+        Config::Utility::translateToFactoryConfig(sink_object, factory);
 
-  if (json.hasObject("ssl_context")) {
-    Ssl::ContextConfigImpl context_config(*json.getObject("ssl_context"));
-    ssl_context_ = &parent_.server_.sslContextManager().createSslServerContext(
-        fmt::format("listener.{}.", port_), parent_.server_.stats(), context_config);
-  }
-
-  if (json.hasObject("use_proxy_proto")) {
-    use_proxy_proto_ = json.getBoolean("use_proxy_proto");
-  }
-
-  std::vector<Json::ObjectPtr> filters = json.getObjectArray("filters");
-  for (size_t i = 0; i < filters.size(); i++) {
-    std::string string_type = filters[i]->getString("type");
-    std::string string_name = filters[i]->getString("name");
-    Json::ObjectPtr config = filters[i]->getObject("config");
-    log().info("  filter #{}:", i);
-    log().info("    type: {}", string_type);
-    log().info("    name: {}", string_name);
-
-    // Map filter type string to enum.
-    NetworkFilterType type;
-    if (string_type == "read") {
-      type = NetworkFilterType::Read;
-    } else if (string_type == "write") {
-      type = NetworkFilterType::Write;
-    } else if (string_type == "both") {
-      type = NetworkFilterType::Both;
-    } else {
-      throw EnvoyException(fmt::format("invalid filter type '{}'", string_type));
-    }
-
-    // Now see if there is a factory that will accept the config.
-    bool found_filter = false;
-    for (NetworkFilterConfigFactory* config_factory : filterConfigFactories()) {
-      NetworkFilterFactoryCb callback =
-          config_factory->tryCreateFilterFactory(type, string_name, *config, parent_.server_);
-      if (callback) {
-        filter_factories_.push_back(callback);
-        found_filter = true;
-        break;
-      }
-    }
-
-    if (!found_filter) {
-      throw EnvoyException(
-          fmt::format("unable to create filter factory for '{}'/'{}'", string_name, string_type));
-    }
+    stats_sinks_.emplace_back(factory.createStatsSink(*message, server));
   }
 }
 
-void MainImpl::ListenerConfig::createFilterChain(Network::Connection& connection) {
-  FilterChainUtility::buildFilterChain(connection, filter_factories_);
-}
+InitialImpl::InitialImpl(const envoy::config::bootstrap::v2::Bootstrap& bootstrap) {
+  const auto& admin = bootstrap.admin();
+  admin_.access_log_path_ = admin.access_log_path();
+  admin_.profile_path_ =
+      admin.profile_path().empty() ? "/var/log/envoy/envoy.prof" : admin.profile_path();
+  admin_.address_ = Network::Address::resolveProtoAddress(admin.address());
 
-InitialImpl::InitialImpl(const Json::Object& json) {
-  Json::ObjectPtr admin = json.getObject("admin");
-  admin_.access_log_path_ = admin->getString("access_log_path");
-  admin_.port_ = admin->getInteger("port");
-
-  if (json.hasObject("flags_path")) {
-    flags_path_.value(json.getString("flags_path"));
+  if (!bootstrap.flags_path().empty()) {
+    flags_path_.value(bootstrap.flags_path());
   }
 
-  if (json.hasObject("runtime")) {
+  if (bootstrap.has_runtime()) {
     runtime_.reset(new RuntimeImpl());
-    runtime_->symlink_root_ = json.getObject("runtime")->getString("symlink_root");
-    runtime_->subdirectory_ = json.getObject("runtime")->getString("subdirectory");
-    runtime_->override_subdirectory_ =
-        json.getObject("runtime")->getString("override_subdirectory", "");
+    runtime_->symlink_root_ = bootstrap.runtime().symlink_root();
+    runtime_->subdirectory_ = bootstrap.runtime().subdirectory();
+    runtime_->override_subdirectory_ = bootstrap.runtime().override_subdirectory();
   }
 }
 
-} // Configuration
-} // Server
+} // namespace Configuration
+} // namespace Server
+} // namespace Envoy

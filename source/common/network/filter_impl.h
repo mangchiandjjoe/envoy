@@ -1,5 +1,6 @@
 #pragma once
 
+namespace Envoy {
 namespace Network {
 
 /**
@@ -20,4 +21,5 @@ public:
   Network::FilterStatus onNewConnection() override { return Network::FilterStatus::Continue; }
 };
 
-} // Network
+} // namespace Network
+} // namespace Envoy

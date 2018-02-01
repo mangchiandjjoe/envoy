@@ -1,14 +1,23 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <unordered_set>
+
+#include "envoy/api/v2/filter/network/client_ssl_auth.pb.h"
 #include "envoy/network/filter.h"
 #include "envoy/runtime/runtime.h"
 #include "envoy/stats/stats_macros.h"
 #include "envoy/thread_local/thread_local.h"
 #include "envoy/upstream/cluster_manager.h"
 
-#include "common/json/json_loader.h"
+#include "common/http/rest_api_fetcher.h"
+#include "common/network/cidr_range.h"
 #include "common/network/utility.h"
+#include "common/protobuf/utility.h"
 
+namespace Envoy {
 namespace Filter {
 namespace Auth {
 namespace ClientSsl {
@@ -49,57 +58,55 @@ public:
   }
   size_t size() const { return allowed_sha256_digests_.size(); }
 
-  // ThreadLocal::ThreadLocalObject
-  void shutdown() override {}
-
 private:
   std::unordered_set<std::string> allowed_sha256_digests_;
 };
 
-typedef std::shared_ptr<AllowedPrincipals> AllowedPrincipalsPtr;
+typedef std::shared_ptr<AllowedPrincipals> AllowedPrincipalsSharedPtr;
+
+class Config;
+typedef std::shared_ptr<Config> ConfigSharedPtr;
 
 /**
  * Global configuration for client SSL authentication. The config contacts a JSON API to fetch the
  * list of allowed principals, caches it, then makes auth decisions on it and any associated IP
  * white list.
  */
-class Config : public Http::AsyncClient::Callbacks {
+class Config : public Http::RestApiFetcher {
 public:
-  Config(const Json::Object& config, ThreadLocal::Instance& tls, Upstream::ClusterManager& cm,
-         Event::Dispatcher& dispatcher, Stats::Store& stats_store, Runtime::Loader& runtime);
+  static ConfigSharedPtr create(const envoy::api::v2::filter::network::ClientSSLAuth& config,
+                                ThreadLocal::SlotAllocator& tls, Upstream::ClusterManager& cm,
+                                Event::Dispatcher& dispatcher, Stats::Scope& scope,
+                                Runtime::RandomGenerator& random);
 
   const AllowedPrincipals& allowedPrincipals();
-  const Network::IpWhiteList& ipWhiteList() { return ip_white_list_; }
+  const Network::Address::IpList& ipWhiteList() { return ip_white_list_; }
   GlobalStats& stats() { return stats_; }
 
-  // Http::AsyncClient::Callbacks
-  void onSuccess(Http::MessagePtr&& response) override;
-  void onFailure(Http::AsyncClient::FailureReason reason) override;
-
 private:
-  static GlobalStats generateStats(Stats::Store& store, const std::string& prefix);
-  AllowedPrincipalsPtr parseAuthResponse(Http::Message& message);
-  void refreshPrincipals();
-  void requestComplete();
+  Config(const envoy::api::v2::filter::network::ClientSSLAuth& config,
+         ThreadLocal::SlotAllocator& tls, Upstream::ClusterManager& cm,
+         Event::Dispatcher& dispatcher, Stats::Scope& scope, Runtime::RandomGenerator& random);
 
-  ThreadLocal::Instance& tls_;
-  uint32_t tls_slot_;
-  Upstream::ClusterManager& cm_;
-  const std::string auth_api_cluster_;
-  Event::TimerPtr interval_timer_;
-  Network::IpWhiteList ip_white_list_;
+  static GlobalStats generateStats(Stats::Scope& scope, const std::string& prefix);
+
+  // Http::RestApiFetcher
+  void createRequest(Http::Message& request) override;
+  void parseResponse(const Http::Message& response) override;
+  void onFetchComplete() override {}
+  void onFetchFailure(const EnvoyException* e) override;
+
+  ThreadLocal::SlotPtr tls_;
+  Network::Address::IpList ip_white_list_;
   GlobalStats stats_;
-  Runtime::Loader& runtime_;
 };
-
-typedef std::shared_ptr<Config> ConfigPtr;
 
 /**
  * A client SSL auth filter instance. One per connection.
  */
 class Instance : public Network::ReadFilter, public Network::ConnectionCallbacks {
 public:
-  Instance(ConfigPtr config) : config_(config) {}
+  Instance(ConfigSharedPtr config) : config_(config) {}
 
   // Network::ReadFilter
   Network::FilterStatus onData(Buffer::Instance& data) override;
@@ -110,13 +117,16 @@ public:
   }
 
   // Network::ConnectionCallbacks
-  void onEvent(uint32_t events) override;
+  void onEvent(Network::ConnectionEvent event) override;
+  void onAboveWriteBufferHighWatermark() override {}
+  void onBelowWriteBufferLowWatermark() override {}
 
 private:
-  ConfigPtr config_;
+  ConfigSharedPtr config_;
   Network::ReadFilterCallbacks* read_callbacks_{};
 };
 
 } // ClientSsl
-} // Auth
-} // Filter
+} // namespace Auth
+} // namespace Filter
+} // namespace Envoy

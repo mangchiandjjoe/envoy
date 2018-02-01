@@ -1,9 +1,12 @@
 #pragma once
 
+#include <functional>
+
 #include "envoy/ssl/context.h"
 #include "envoy/ssl/context_config.h"
 #include "envoy/stats/stats.h"
 
+namespace Envoy {
 namespace Ssl {
 
 /**
@@ -14,26 +17,39 @@ public:
   virtual ~ContextManager() {}
 
   /**
-   * Builds an Ssl::ClientContext from an Ssl::ContextConfig
+   * Builds a ClientContext from a ClientContextConfig.
    */
-  virtual Ssl::ClientContext& createSslClientContext(const std::string& name, Stats::Store& stats,
-                                                     ContextConfig& config) PURE;
+  virtual ClientContextPtr createSslClientContext(Stats::Scope& scope,
+                                                  const ClientContextConfig& config) PURE;
 
   /**
-   * Builds an Ssl::ServerContext from an Ssl::ContextConfig
+   * Builds a ServerContext from a ServerContextConfig.
+   * The skip_context_update parameter is used for fast-path (avoiding lock & context lookup)
+   * on listeners with a single filter chain and no SNI restrictions.
    */
-  virtual Ssl::ServerContext& createSslServerContext(const std::string& name, Stats::Store& stats,
-                                                     ContextConfig& config) PURE;
+  virtual ServerContextPtr createSslServerContext(const std::string& listener_name,
+                                                  const std::vector<std::string>& server_names,
+                                                  Stats::Scope& scope,
+                                                  const ServerContextConfig& config,
+                                                  bool skip_context_update) PURE;
 
   /**
-   * @return the number of days until the next certificate being managed will expire
+   * Find ServerContext for a given listener and server_name.
+   * @return ServerContext or nullptr in case there is no match.
    */
-  virtual size_t daysUntilFirstCertExpires() PURE;
+  virtual ServerContext* findSslServerContext(const std::string& listener_name,
+                                              const std::string& server_name) const PURE;
 
   /**
-   * @return a set of all contexts being managed
+   * @return the number of days until the next certificate being managed will expire.
    */
-  virtual std::vector<std::reference_wrapper<Ssl::Context>> getContexts() PURE;
+  virtual size_t daysUntilFirstCertExpires() const PURE;
+
+  /**
+   * Iterate through all currently allocated contexts.
+   */
+  virtual void iterateContexts(std::function<void(const Context&)> callback) PURE;
 };
 
-} // Ssl
+} // namespace Ssl
+} // namespace Envoy

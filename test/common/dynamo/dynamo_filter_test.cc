@@ -1,3 +1,6 @@
+#include <memory>
+#include <string>
+
 #include "common/buffer/buffer_impl.h"
 #include "common/dynamo/dynamo_filter.h"
 #include "common/http/header_map_impl.h"
@@ -5,12 +8,19 @@
 #include "test/mocks/http/mocks.h"
 #include "test/mocks/runtime/mocks.h"
 #include "test/mocks/stats/mocks.h"
+#include "test/test_common/printers.h"
 #include "test/test_common/utility.h"
 
-using testing::_;
-using testing::NiceMock;
-using testing::Return;
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
+using testing::NiceMock;
+using testing::Property;
+using testing::Return;
+using testing::ReturnRef;
+using testing::_;
+
+namespace Envoy {
 namespace Dynamo {
 
 class DynamoFilterTest : public testing::Test {
@@ -26,6 +36,8 @@ public:
     filter_->setEncoderFilterCallbacks(encoder_callbacks_);
   }
 
+  ~DynamoFilterTest() { filter_->onDestroy(); }
+
   std::unique_ptr<DynamoFilter> filter_;
   NiceMock<Runtime::MockLoader> loader_;
   std::string stat_prefix_{"prefix."};
@@ -39,7 +51,8 @@ TEST_F(DynamoFilterTest, operatorPresent) {
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.Get"}, {"random", "random"}};
 
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, true));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, true));
   Http::TestHeaderMapImpl response_headers{{":status", "200"}};
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation_missing")).Times(0);
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table_missing"));
@@ -48,11 +61,21 @@ TEST_F(DynamoFilterTest, operatorPresent) {
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.Get.upstream_rq_total_200"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.Get.upstream_rq_total"));
 
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.Get.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.Get.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks("prefix.dynamodb.operation.Get.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.Get.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.Get.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.Get.upstream_rq_time"));
+  EXPECT_CALL(
+      stats_,
+      deliverHistogramToSinks(
+          Property(&Stats::Metric::name, "prefix.dynamodb.operation.Get.upstream_rq_time_2xx"), _));
+  EXPECT_CALL(
+      stats_,
+      deliverHistogramToSinks(
+          Property(&Stats::Metric::name, "prefix.dynamodb.operation.Get.upstream_rq_time_200"), _));
+  EXPECT_CALL(
+      stats_,
+      deliverHistogramToSinks(
+          Property(&Stats::Metric::name, "prefix.dynamodb.operation.Get.upstream_rq_time"), _));
 
   EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, true));
 }
@@ -62,7 +85,8 @@ TEST_F(DynamoFilterTest, jsonBodyNotWellFormed) {
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.GetItem"},
                                           {"random", "random"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, false));
 
   Buffer::OwnedImpl buffer;
   buffer.add("test", 4);
@@ -76,7 +100,8 @@ TEST_F(DynamoFilterTest, bothOperationAndTableIncorrect) {
   setup(true);
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version"}, {"random", "random"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, true));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, true));
 
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation_missing"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table_missing"));
@@ -89,24 +114,27 @@ TEST_F(DynamoFilterTest, handleErrorTypeTableMissing) {
   setup(true);
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version"}, {"random", "random"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, true));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, true));
 
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation_missing"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table_missing"));
 
   Http::TestHeaderMapImpl response_headers{{":status", "400"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->encodeHeaders(response_headers, false));
 
-  Buffer::OwnedImpl error_data;
+  Buffer::InstancePtr error_data(new Buffer::OwnedImpl());
   std::string internal_error =
       "{\"__type\":\"com.amazonaws.dynamodb.v20120810#ValidationException\"}";
-  error_data.add(internal_error);
+  error_data->add(internal_error);
   EXPECT_CALL(stats_, counter("prefix.dynamodb.error.no_table.ValidationException"));
-  EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->encodeData(error_data, true));
+  EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->encodeData(*error_data, true));
 
-  error_data.add("}", 1);
-  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->encodeData(error_data, false));
-  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).WillRepeatedly(Return(&error_data));
+  error_data->add("}", 1);
+  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer,
+            filter_->encodeData(*error_data, false));
+  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).WillRepeatedly(Return(error_data.get()));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.invalid_resp_body"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation_missing"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table_missing"));
@@ -118,7 +146,8 @@ TEST_F(DynamoFilterTest, HandleErrorTypeTablePresent) {
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.GetItem"},
                                           {"random", "random"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, false));
 
   Buffer::OwnedImpl buffer;
   std::string buffer_content = "{\"TableName\":\"locations\"}";
@@ -126,7 +155,8 @@ TEST_F(DynamoFilterTest, HandleErrorTypeTablePresent) {
   EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->decodeData(buffer, true));
 
   Http::TestHeaderMapImpl response_headers{{":status", "400"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->encodeHeaders(response_headers, false));
 
   Buffer::OwnedImpl error_data;
   std::string internal_error =
@@ -137,21 +167,42 @@ TEST_F(DynamoFilterTest, HandleErrorTypeTablePresent) {
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.GetItem.upstream_rq_total"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.GetItem.upstream_rq_total_4xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.GetItem.upstream_rq_total_400"));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.GetItem.upstream_rq_time_4xx", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.GetItem.upstream_rq_time_400", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.GetItem.upstream_rq_time", _));
+
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.GetItem.upstream_rq_time"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.GetItem.upstream_rq_time_4xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.GetItem.upstream_rq_time_400"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.GetItem.upstream_rq_time_4xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.GetItem.upstream_rq_time_400"),
+                          _));
+  EXPECT_CALL(
+      stats_,
+      deliverHistogramToSinks(
+          Property(&Stats::Metric::name, "prefix.dynamodb.operation.GetItem.upstream_rq_time"), _));
 
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total_4xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total_400"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total"));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time_4xx", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time_400", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time", _));
+
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time_4xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time_400"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.table.locations.upstream_rq_time_4xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.table.locations.upstream_rq_time_400"),
+                          _));
+  EXPECT_CALL(
+      stats_,
+      deliverHistogramToSinks(
+          Property(&Stats::Metric::name, "prefix.dynamodb.table.locations.upstream_rq_time"), _));
 
   EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->encodeData(error_data, true));
 }
@@ -161,9 +212,10 @@ TEST_F(DynamoFilterTest, BatchMultipleTables) {
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.BatchGetItem"},
                                           {"random", "random"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, false));
 
-  Buffer::OwnedImpl buffer;
+  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
   std::string buffer_content = R"EOF(
 {
   "RequestItems": {
@@ -172,10 +224,10 @@ TEST_F(DynamoFilterTest, BatchMultipleTables) {
   }
 }
 )EOF";
-  buffer.add(buffer_content);
+  buffer->add(buffer_content);
 
-  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(buffer, false));
-  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(&buffer));
+  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(*buffer, false));
+  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(buffer.get()));
   EXPECT_EQ(Http::FilterTrailersStatus::Continue, filter_->decodeTrailers(request_headers));
 
   Http::TestHeaderMapImpl response_headers{{":status", "200"}};
@@ -185,12 +237,21 @@ TEST_F(DynamoFilterTest, BatchMultipleTables) {
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_2xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_200"));
 
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"),
+                          _));
 
   EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, true));
 }
@@ -200,9 +261,10 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesUnprocessedKeys) {
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.BatchGetItem"},
                                           {"random", "random"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, false));
 
-  Buffer::OwnedImpl buffer;
+  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
   std::string buffer_content = R"EOF(
 {
   "RequestItems": {
@@ -211,10 +273,10 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesUnprocessedKeys) {
   }
 }
 )EOF";
-  buffer.add(buffer_content);
+  buffer->add(buffer_content);
 
-  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(buffer, false));
-  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(&buffer));
+  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(*buffer, false));
+  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(buffer.get()));
   EXPECT_EQ(Http::FilterTrailersStatus::Continue, filter_->decodeTrailers(request_headers));
 
   Http::TestHeaderMapImpl response_headers{{":status", "200"}};
@@ -224,17 +286,27 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesUnprocessedKeys) {
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_2xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_200"));
 
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"),
+                          _));
 
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->encodeHeaders(response_headers, false));
 
   Buffer::OwnedImpl empty_data;
-  Buffer::OwnedImpl response_data;
+  Buffer::InstancePtr response_data(new Buffer::OwnedImpl());
   std::string response_content = R"EOF(
 {
   "UnprocessedKeys": {
@@ -243,11 +315,11 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesUnprocessedKeys) {
   }
 }
 )EOF";
-  response_data.add(response_content);
+  response_data->add(response_content);
 
   EXPECT_CALL(stats_, counter("prefix.dynamodb.error.table_1.BatchFailureUnprocessedKeys"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.error.table_2.BatchFailureUnprocessedKeys"));
-  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).Times(1).WillRepeatedly(Return(&response_data));
+  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).WillRepeatedly(Return(response_data.get()));
   EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->encodeData(empty_data, true));
 }
 
@@ -256,9 +328,10 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesNoUnprocessedKeys) {
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.BatchGetItem"},
                                           {"random", "random"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, false));
 
-  Buffer::OwnedImpl buffer;
+  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
   std::string buffer_content = R"EOF(
 {
   "RequestItems": {
@@ -267,10 +340,10 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesNoUnprocessedKeys) {
   }
 }
 )EOF";
-  buffer.add(buffer_content);
+  buffer->add(buffer_content);
 
-  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(buffer, false));
-  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(&buffer));
+  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(*buffer, false));
+  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(buffer.get()));
   EXPECT_EQ(Http::FilterTrailersStatus::Continue, filter_->decodeTrailers(request_headers));
 
   Http::TestHeaderMapImpl response_headers{{":status", "200"}};
@@ -280,26 +353,36 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesNoUnprocessedKeys) {
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_2xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_200"));
 
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"),
+                          _));
 
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->encodeHeaders(response_headers, false));
 
   Buffer::OwnedImpl empty_data;
-  Buffer::OwnedImpl response_data;
+  Buffer::InstancePtr response_data(new Buffer::OwnedImpl());
   std::string response_content = R"EOF(
 {
   "UnprocessedKeys": {
   }
 }
 )EOF";
-  response_data.add(response_content);
+  response_data->add(response_content);
 
-  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).Times(1).WillRepeatedly(Return(&response_data));
+  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).WillOnce(Return(response_data.get()));
   EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->encodeData(empty_data, true));
 }
 
@@ -308,9 +391,10 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesInvalidResponseBody) {
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.BatchGetItem"},
                                           {"random", "random"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, false));
 
-  Buffer::OwnedImpl buffer;
+  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
   std::string buffer_content = R"EOF(
 {
   "RequestItems": {
@@ -319,10 +403,10 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesInvalidResponseBody) {
   }
 }
 )EOF";
-  buffer.add(buffer_content);
+  buffer->add(buffer_content);
 
-  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(buffer, false));
-  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(&buffer));
+  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(*buffer, false));
+  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(buffer.get()));
   EXPECT_EQ(Http::FilterTrailersStatus::Continue, filter_->decodeTrailers(request_headers));
 
   Http::TestHeaderMapImpl response_headers{{":status", "200"}};
@@ -332,17 +416,27 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesInvalidResponseBody) {
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_2xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_200"));
 
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"),
+                          _));
 
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->encodeHeaders(response_headers, false));
 
   Buffer::OwnedImpl empty_data;
-  Buffer::OwnedImpl response_data;
+  Buffer::InstancePtr response_data(new Buffer::OwnedImpl());
   std::string response_content = R"EOF(
 {
   "UnprocessedKeys": {
@@ -351,11 +445,11 @@ TEST_F(DynamoFilterTest, BatchMultipleTablesInvalidResponseBody) {
   }
 }
 )EOF";
-  response_data.add(response_content);
-  response_data.add("}", 1);
+  response_data->add(response_content);
+  response_data->add("}", 1);
 
   EXPECT_CALL(stats_, counter("prefix.dynamodb.invalid_resp_body"));
-  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).Times(1).WillRepeatedly(Return(&response_data));
+  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).WillOnce(Return(response_data.get()));
   EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->encodeData(empty_data, true));
 }
 
@@ -363,14 +457,15 @@ TEST_F(DynamoFilterTest, bothOperationAndTableCorrect) {
   setup(true);
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.GetItem"}};
-  Buffer::OwnedImpl buffer;
+  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
   std::string buffer_content = "{\"TableName\":\"locations\"";
-  buffer.add(buffer_content);
-  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(&buffer));
+  buffer->add(buffer_content);
+  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(buffer.get()));
   Buffer::OwnedImpl data;
   data.add("}", 1);
 
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, false));
   EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(data, false));
   EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->decodeData(data, true));
 
@@ -378,22 +473,41 @@ TEST_F(DynamoFilterTest, bothOperationAndTableCorrect) {
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.GetItem.upstream_rq_total_200"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.GetItem.upstream_rq_total"));
 
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.GetItem.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.GetItem.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.GetItem.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.GetItem.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.GetItem.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.GetItem.upstream_rq_time"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.GetItem.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.GetItem.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(
+      stats_,
+      deliverHistogramToSinks(
+          Property(&Stats::Metric::name, "prefix.dynamodb.operation.GetItem.upstream_rq_time"), _));
 
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total_2xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total_200"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total"));
 
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.table.locations.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.table.locations.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(
+      stats_,
+      deliverHistogramToSinks(
+          Property(&Stats::Metric::name, "prefix.dynamodb.table.locations.upstream_rq_time"), _));
 
   Http::TestHeaderMapImpl response_headers{{":status", "200"}};
   EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, true));
@@ -403,7 +517,7 @@ TEST_F(DynamoFilterTest, operatorPresentRuntimeDisabled) {
   setup(false);
 
   EXPECT_CALL(stats_, counter(_)).Times(0);
-  EXPECT_CALL(stats_, deliverTimingToSinks(_, _)).Times(0);
+  EXPECT_CALL(stats_, deliverHistogramToSinks(_, _)).Times(0);
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.operator"},
                                           {"random", "random"}};
@@ -418,14 +532,15 @@ TEST_F(DynamoFilterTest, PartitionIdStats) {
   setup(true);
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.GetItem"}};
-  Buffer::OwnedImpl buffer;
+  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
   std::string buffer_content = "{\"TableName\":\"locations\"";
-  buffer.add(buffer_content);
-  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(&buffer));
+  buffer->add(buffer_content);
+  ON_CALL(decoder_callbacks_, decodingBuffer()).WillByDefault(Return(buffer.get()));
   Buffer::OwnedImpl data;
   data.add("}", 1);
 
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, false));
   EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(data, false));
   EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->decodeData(data, true));
 
@@ -433,22 +548,41 @@ TEST_F(DynamoFilterTest, PartitionIdStats) {
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.GetItem.upstream_rq_total_200"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.GetItem.upstream_rq_total"));
 
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.GetItem.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.GetItem.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.GetItem.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.GetItem.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.GetItem.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.GetItem.upstream_rq_time"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.GetItem.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.GetItem.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(
+      stats_,
+      deliverHistogramToSinks(
+          Property(&Stats::Metric::name, "prefix.dynamodb.operation.GetItem.upstream_rq_time"), _));
 
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total_2xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total_200"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total"));
 
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.table.locations.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.table.locations.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(
+      stats_,
+      deliverHistogramToSinks(
+          Property(&Stats::Metric::name, "prefix.dynamodb.table.locations.upstream_rq_time"), _));
 
   EXPECT_CALL(stats_,
               counter("prefix.dynamodb.table.locations.capacity.GetItem.__partition_id=ition_1"))
@@ -458,10 +592,11 @@ TEST_F(DynamoFilterTest, PartitionIdStats) {
       .Times(1);
 
   Http::TestHeaderMapImpl response_headers{{":status", "200"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->encodeHeaders(response_headers, false));
 
   Buffer::OwnedImpl empty_data;
-  Buffer::OwnedImpl response_data;
+  Buffer::InstancePtr response_data(new Buffer::OwnedImpl());
   std::string response_content = R"EOF(
     {
       "ConsumedCapacity": {
@@ -473,9 +608,9 @@ TEST_F(DynamoFilterTest, PartitionIdStats) {
     }
     )EOF";
 
-  response_data.add(response_content);
+  response_data->add(response_content);
 
-  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).Times(1).WillRepeatedly(Return(&response_data));
+  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).WillOnce(Return(response_data.get()));
   EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->encodeData(empty_data, true));
 }
 
@@ -483,7 +618,7 @@ TEST_F(DynamoFilterTest, NoPartitionIdStatsForMultipleTables) {
   setup(true);
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.BatchGetItem"}};
-  Buffer::OwnedImpl buffer;
+  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
   std::string buffer_content = R"EOF(
 {
   "RequestItems": {
@@ -492,11 +627,12 @@ TEST_F(DynamoFilterTest, NoPartitionIdStatsForMultipleTables) {
   }
 }
 )EOF";
-  buffer.add(buffer_content);
-  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(&buffer));
+  buffer->add(buffer_content);
+  ON_CALL(decoder_callbacks_, decodingBuffer()).WillByDefault(Return(buffer.get()));
 
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
-  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(buffer, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, false));
+  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(*buffer, false));
   EXPECT_EQ(Http::FilterTrailersStatus::Continue, filter_->decodeTrailers(request_headers));
 
   EXPECT_CALL(stats_, counter("prefix.dynamodb.multiple_tables"));
@@ -505,12 +641,21 @@ TEST_F(DynamoFilterTest, NoPartitionIdStatsForMultipleTables) {
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_2xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_200"));
 
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"),
+                          _));
 
   EXPECT_CALL(
       stats_,
@@ -522,10 +667,11 @@ TEST_F(DynamoFilterTest, NoPartitionIdStatsForMultipleTables) {
       .Times(0);
 
   Http::TestHeaderMapImpl response_headers{{":status", "200"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->encodeHeaders(response_headers, false));
 
   Buffer::OwnedImpl empty_data;
-  Buffer::OwnedImpl response_data;
+  Buffer::InstancePtr response_data(new Buffer::OwnedImpl());
   std::string response_content = R"EOF(
     {
       "ConsumedCapacity": {
@@ -537,9 +683,9 @@ TEST_F(DynamoFilterTest, NoPartitionIdStatsForMultipleTables) {
     }
     )EOF";
 
-  response_data.add(response_content);
+  response_data->add(response_content);
 
-  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).Times(1).WillRepeatedly(Return(&response_data));
+  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).WillOnce(Return(response_data.get()));
   EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->encodeData(empty_data, true));
 }
 
@@ -547,7 +693,7 @@ TEST_F(DynamoFilterTest, PartitionIdStatsForSingleTableBatchOperation) {
   setup(true);
 
   Http::TestHeaderMapImpl request_headers{{"x-amz-target", "version.BatchGetItem"}};
-  Buffer::OwnedImpl buffer;
+  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
   std::string buffer_content = R"EOF(
 {
   "RequestItems": {
@@ -555,11 +701,12 @@ TEST_F(DynamoFilterTest, PartitionIdStatsForSingleTableBatchOperation) {
   }
 }
 )EOF";
-  buffer.add(buffer_content);
-  EXPECT_CALL(decoder_callbacks_, decodingBuffer()).WillRepeatedly(Return(&buffer));
+  buffer->add(buffer_content);
+  ON_CALL(decoder_callbacks_, decodingBuffer()).WillByDefault(Return(buffer.get()));
 
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
-  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(buffer, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->decodeHeaders(request_headers, false));
+  EXPECT_EQ(Http::FilterDataStatus::StopIterationAndBuffer, filter_->decodeData(*buffer, false));
   EXPECT_EQ(Http::FilterTrailersStatus::Continue, filter_->decodeTrailers(request_headers));
 
   EXPECT_CALL(stats_, counter("prefix.dynamodb.multiple_tables")).Times(0);
@@ -568,22 +715,41 @@ TEST_F(DynamoFilterTest, PartitionIdStatsForSingleTableBatchOperation) {
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_2xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.operation.BatchGetItem.upstream_rq_total_200"));
 
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks(
-                          "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.operation.BatchGetItem.upstream_rq_time"),
+                          _));
 
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total_2xx"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total_200"));
   EXPECT_CALL(stats_, counter("prefix.dynamodb.table.locations.upstream_rq_total"));
 
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time_2xx", _));
-  EXPECT_CALL(stats_,
-              deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time_200", _));
-  EXPECT_CALL(stats_, deliverTimingToSinks("prefix.dynamodb.table.locations.upstream_rq_time", _));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time_2xx"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time_200"));
+  EXPECT_CALL(stats_, histogram("prefix.dynamodb.table.locations.upstream_rq_time"));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.table.locations.upstream_rq_time_2xx"),
+                          _));
+  EXPECT_CALL(stats_, deliverHistogramToSinks(
+                          Property(&Stats::Metric::name,
+                                   "prefix.dynamodb.table.locations.upstream_rq_time_200"),
+                          _));
+  EXPECT_CALL(
+      stats_,
+      deliverHistogramToSinks(
+          Property(&Stats::Metric::name, "prefix.dynamodb.table.locations.upstream_rq_time"), _));
 
   EXPECT_CALL(
       stats_,
@@ -595,10 +761,11 @@ TEST_F(DynamoFilterTest, PartitionIdStatsForSingleTableBatchOperation) {
       .Times(1);
 
   Http::TestHeaderMapImpl response_headers{{":status", "200"}};
-  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers, false));
+  EXPECT_EQ(Http::FilterHeadersStatus::StopIteration,
+            filter_->encodeHeaders(response_headers, false));
 
   Buffer::OwnedImpl empty_data;
-  Buffer::OwnedImpl response_data;
+  Buffer::InstancePtr response_data(new Buffer::OwnedImpl());
   std::string response_content = R"EOF(
     {
       "ConsumedCapacity": {
@@ -610,10 +777,11 @@ TEST_F(DynamoFilterTest, PartitionIdStatsForSingleTableBatchOperation) {
     }
     )EOF";
 
-  response_data.add(response_content);
+  response_data->add(response_content);
 
-  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).Times(1).WillRepeatedly(Return(&response_data));
+  EXPECT_CALL(encoder_callbacks_, encodingBuffer()).WillOnce(Return(response_data.get()));
   EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->encodeData(empty_data, true));
 }
 
-} // Dynamo
+} // namespace Dynamo
+} // namespace Envoy

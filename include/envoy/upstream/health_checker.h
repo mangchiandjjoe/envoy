@@ -1,7 +1,11 @@
 #pragma once
 
+#include <functional>
+#include <memory>
+
 #include "envoy/upstream/upstream.h"
 
+namespace Envoy {
 namespace Upstream {
 
 /**
@@ -17,7 +21,7 @@ public:
    * @param changed_state supplies whether the health check resulted in a host moving from healthy
    *                       to not healthy or vice versa.
    */
-  typedef std::function<void(HostPtr host, bool changed_state)> HostStatusCb;
+  typedef std::function<void(HostSharedPtr host, bool changed_state)> HostStatusCb;
 
   /**
    * Install a callback that will be invoked every time a health check round is completed for
@@ -32,6 +36,7 @@ public:
   virtual void start() PURE;
 };
 
-typedef std::unique_ptr<HealthChecker> HealthCheckerPtr;
+typedef std::shared_ptr<HealthChecker> HealthCheckerSharedPtr;
 
-} // Upstream
+} // namespace Upstream
+} // namespace Envoy

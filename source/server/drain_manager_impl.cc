@@ -1,4 +1,8 @@
-#include "drain_manager_impl.h"
+#include "server/drain_manager_impl.h"
+
+#include <chrono>
+#include <cstdint>
+#include <functional>
 
 #include "envoy/event/dispatcher.h"
 #include "envoy/event/timer.h"
@@ -7,13 +11,20 @@
 
 #include "common/common/assert.h"
 
+namespace Envoy {
 namespace Server {
 
-DrainManagerImpl::DrainManagerImpl(Instance& server) : server_(server) {}
+DrainManagerImpl::DrainManagerImpl(Instance& server, envoy::api::v2::Listener::DrainType drain_type)
+    : server_(server), drain_type_(drain_type) {}
 
-bool DrainManagerImpl::drainClose() {
-  // If we are actively HC failed, always drain close.
-  if (server_.healthCheckFailed()) {
+bool DrainManagerImpl::drainClose() const {
+  // If we are actively HC failed and the drain type is default, always drain close.
+  //
+  // TODO(mattklein123): In relation to x-envoy-immediate-health-check-fail, it would be better
+  // if even in the case of server health check failure we had some period of drain ramp up. This
+  // would allow the other side to fail health check for the host which will require some thread
+  // jumps versus immediately start GOAWAY/connection thrashing.
+  if (drain_type_ == envoy::api::v2::Listener_DrainType_DEFAULT && server_.healthCheckFailed()) {
     return true;
   }
 
@@ -22,21 +33,24 @@ bool DrainManagerImpl::drainClose() {
   }
 
   // We use the tick time as in increasing chance that we shutdown connections.
-  return static_cast<uint64_t>(drain_time_completed_.count()) >
+  return static_cast<uint64_t>(drain_time_completed_.load()) >
          (server_.random().random() % server_.options().drainTime().count());
 }
 
 void DrainManagerImpl::drainSequenceTick() {
-  log_trace("drain tick #{}", drain_time_completed_.count());
-  ASSERT(drain_time_completed_ < server_.options().drainTime());
-  drain_time_completed_ += std::chrono::seconds(1);
+  ENVOY_LOG(trace, "drain tick #{}", drain_time_completed_.load());
+  ASSERT(drain_time_completed_.load() < server_.options().drainTime().count());
+  ++drain_time_completed_;
 
-  if (drain_time_completed_ < server_.options().drainTime()) {
+  if (drain_time_completed_.load() < server_.options().drainTime().count()) {
     drain_tick_timer_->enableTimer(std::chrono::milliseconds(1000));
+  } else if (drain_sequence_completion_) {
+    drain_sequence_completion_();
   }
 }
 
-void DrainManagerImpl::startDrainSequence() {
+void DrainManagerImpl::startDrainSequence(std::function<void()> completion) {
+  drain_sequence_completion_ = completion;
   ASSERT(!drain_tick_timer_);
   drain_tick_timer_ = server_.dispatcher().createTimer([this]() -> void { drainSequenceTick(); });
   drainSequenceTick();
@@ -46,7 +60,7 @@ void DrainManagerImpl::startParentShutdownSequence() {
   ASSERT(!parent_shutdown_timer_);
   parent_shutdown_timer_ = server_.dispatcher().createTimer([this]() -> void {
     // Shut down the parent now. It should have already been draining.
-    log().warn("shutting down parent after drain");
+    ENVOY_LOG(info, "shutting down parent after drain");
     server_.hotRestart().terminateParent();
   });
 
@@ -54,4 +68,5 @@ void DrainManagerImpl::startParentShutdownSequence() {
       server_.options().parentShutdownTime()));
 }
 
-} // Server
+} // namespace Server
+} // namespace Envoy

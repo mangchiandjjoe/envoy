@@ -1,37 +1,60 @@
+#include "server/config/network/ratelimit.h"
+
+#include <chrono>
+#include <string>
+
+#include "envoy/api/v2/filter/network/rate_limit.pb.validate.h"
 #include "envoy/network/connection.h"
+#include "envoy/registry/registry.h"
 
+#include "common/config/filter_json.h"
 #include "common/filter/ratelimit.h"
-#include "server/configuration_impl.h"
+#include "common/protobuf/utility.h"
 
+namespace Envoy {
 namespace Server {
 namespace Configuration {
 
+NetworkFilterFactoryCb
+RateLimitConfigFactory::createFilter(const envoy::api::v2::filter::network::RateLimit& proto_config,
+                                     FactoryContext& context) {
+
+  ASSERT(!proto_config.stat_prefix().empty());
+  ASSERT(!proto_config.domain().empty());
+  ASSERT(proto_config.descriptors_size() > 0);
+
+  RateLimit::TcpFilter::ConfigSharedPtr filter_config(
+      new RateLimit::TcpFilter::Config(proto_config, context.scope(), context.runtime()));
+  const uint32_t timeout_ms = PROTOBUF_GET_MS_OR_DEFAULT(proto_config, timeout, 20);
+
+  return [filter_config, timeout_ms, &context](Network::FilterManager& filter_manager) -> void {
+    filter_manager.addReadFilter(Network::ReadFilterSharedPtr{new RateLimit::TcpFilter::Instance(
+        filter_config, context.rateLimitClient(std::chrono::milliseconds(timeout_ms)))});
+  };
+}
+
+NetworkFilterFactoryCb RateLimitConfigFactory::createFilterFactory(const Json::Object& json_config,
+                                                                   FactoryContext& context) {
+  envoy::api::v2::filter::network::RateLimit proto_config;
+  Config::FilterJson::translateTcpRateLimitFilter(json_config, proto_config);
+  return createFilter(proto_config, context);
+}
+
+NetworkFilterFactoryCb
+RateLimitConfigFactory::createFilterFactoryFromProto(const Protobuf::Message& proto_config,
+                                                     FactoryContext& context) {
+  return createFilter(
+      MessageUtil::downcastAndValidate<const envoy::api::v2::filter::network::RateLimit&>(
+          proto_config),
+      context);
+}
+
 /**
- * Config registration for the rate limit filter. @see NetworkFilterConfigFactory.
+ * Static registration for the rate limit filter. @see RegisterFactory.
  */
-class RateLimitConfigFactory : public NetworkFilterConfigFactory {
-public:
-  // NetworkFilterConfigFactory
-  NetworkFilterFactoryCb tryCreateFilterFactory(NetworkFilterType type, const std::string& name,
-                                                const Json::Object& json_config,
-                                                Server::Instance& server) {
-    if (type != NetworkFilterType::Read || name != "ratelimit") {
-      return nullptr;
-    }
+static Registry::RegisterFactory<RateLimitConfigFactory, NamedNetworkFilterConfigFactory>
+    registered_;
 
-    RateLimit::TcpFilter::ConfigPtr config(
-        new RateLimit::TcpFilter::Config(json_config, server.stats(), server.runtime()));
-    return [config, &server](Network::FilterManager& filter_manager) -> void {
-      filter_manager.addReadFilter(Network::ReadFilterPtr{new RateLimit::TcpFilter::Instance(
-          config, server.rateLimitClient(Optional<std::chrono::milliseconds>()))});
-    };
-  }
-};
-
-/**
- * Static registration for the rate limit filter. @see RegisterNetworkFilterConfigFactory.
- */
-static RegisterNetworkFilterConfigFactory<RateLimitConfigFactory> registered_;
-
-} // Configuration
-} // Server
+} // namespace Configuration
+} // namespace Server
+} // namespace Envoy

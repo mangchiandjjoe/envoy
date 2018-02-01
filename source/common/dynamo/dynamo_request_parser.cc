@@ -1,7 +1,13 @@
-#include "dynamo_request_parser.h"
+#include "common/dynamo/dynamo_request_parser.h"
+
+#include <cmath>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 #include "common/common/utility.h"
 
+namespace Envoy {
 namespace Dynamo {
 
 /*
@@ -49,10 +55,9 @@ std::string RequestParser::parseOperation(const Http::HeaderMap& headerMap) {
   const Http::HeaderEntry* x_amz_target = headerMap.get(X_AMZ_TARGET);
   if (x_amz_target) {
     // Normally x-amz-target contains Version.Operation, e.g., DynamoDB_20160101.GetItem
-    std::vector<std::string> version_and_operation =
-        StringUtil::split(x_amz_target->value().c_str(), '.');
+    auto version_and_operation = StringUtil::splitToken(x_amz_target->value().c_str(), ".");
     if (version_and_operation.size() == 2) {
-      operation = version_and_operation[1];
+      operation = std::string{version_and_operation[1]};
     }
   }
 
@@ -69,7 +74,7 @@ RequestParser::TableDescriptor RequestParser::parseTable(const std::string& oper
     table.table_name = json_data.getString("TableName", "");
   } else if (find(BATCH_OPERATIONS.begin(), BATCH_OPERATIONS.end(), operation) !=
              BATCH_OPERATIONS.end()) {
-    Json::ObjectPtr tables = json_data.getObject("RequestItems", true);
+    Json::ObjectSharedPtr tables = json_data.getObject("RequestItems", true);
     tables->iterate([&table](const std::string& key, const Json::Object&) {
       if (table.table_name.empty()) {
         table.table_name = key;
@@ -88,7 +93,7 @@ RequestParser::TableDescriptor RequestParser::parseTable(const std::string& oper
 }
 std::vector<std::string> RequestParser::parseBatchUnProcessedKeys(const Json::Object& json_data) {
   std::vector<std::string> unprocessed_tables;
-  Json::ObjectPtr tables = json_data.getObject("UnprocessedKeys", true);
+  Json::ObjectSharedPtr tables = json_data.getObject("UnprocessedKeys", true);
   tables->iterate([&unprocessed_tables](const std::string& key, const Json::Object&) {
     unprocessed_tables.emplace_back(key);
     return true;
@@ -120,7 +125,7 @@ std::vector<RequestParser::PartitionDescriptor>
 RequestParser::parsePartitions(const Json::Object& json_data) {
   std::vector<RequestParser::PartitionDescriptor> partition_descriptors;
 
-  Json::ObjectPtr partitions =
+  Json::ObjectSharedPtr partitions =
       json_data.getObject("ConsumedCapacity", true)->getObject("Partitions", true);
   partitions->iterate([&partition_descriptors, &partitions](const std::string& key,
                                                             const Json::Object&) {
@@ -136,4 +141,5 @@ RequestParser::parsePartitions(const Json::Object& json_data) {
   return partition_descriptors;
 }
 
-} // Dynamo
+} // namespace Dynamo
+} // namespace Envoy

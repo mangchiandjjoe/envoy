@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <string>
+
 #include "envoy/common/optional.h"
 #include "envoy/event/timer.h"
 #include "envoy/http/codec.h"
@@ -8,6 +11,9 @@
 #include "envoy/runtime/runtime.h"
 #include "envoy/upstream/upstream.h"
 
+#include "absl/strings/string_view.h"
+
+namespace Envoy {
 namespace Router {
 
 /**
@@ -21,13 +27,16 @@ public:
                               Upstream::ResourcePriority priority);
   ~RetryStateImpl();
 
-  static uint32_t parseRetryOn(const std::string& config);
+  static uint32_t parseRetryOn(absl::string_view config);
+
+  // Returns the RetryPolicy extracted from the x-envoy-retry-grpc-on header.
+  static uint32_t parseRetryGrpcOn(absl::string_view retry_grpc_on_header);
 
   // Router::RetryState
   bool enabled() override { return retry_on_ != 0; }
-  bool shouldRetry(const Http::HeaderMap* response_headers,
-                   const Optional<Http::StreamResetReason>& reset_reason,
-                   DoRetryCallback callback) override;
+  RetryStatus shouldRetry(const Http::HeaderMap* response_headers,
+                          const Optional<Http::StreamResetReason>& reset_reason,
+                          DoRetryCallback callback) override;
 
 private:
   RetryStateImpl(const RetryPolicy& route_policy, Http::HeaderMap& request_headers,
@@ -52,4 +61,5 @@ private:
   Upstream::ResourcePriority priority_;
 };
 
-} // Router
+} // namespace Router
+} // namespace Envoy

@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+
 #include "envoy/common/pure.h"
 
+namespace Envoy {
 namespace Upstream {
 
 /**
@@ -71,4 +75,5 @@ public:
   virtual Resource& retries() PURE;
 };
 
-} // Upstream
+} // namespace Upstream
+} // namespace Envoy

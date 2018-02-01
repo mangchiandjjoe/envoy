@@ -1,20 +1,32 @@
 #pragma once
 
+#include <list>
+#include <string>
+
 #include "envoy/json/json_object.h"
 
+namespace Envoy {
 namespace Json {
 
 class Factory {
 public:
-  /*
-   * Constructs a Json Object from a File.
+  /**
+   * Constructs a Json Object from a file.
    */
-  static ObjectPtr LoadFromFile(const std::string& file_path);
+  static ObjectSharedPtr loadFromFile(const std::string& file_path);
 
-  /*
-   * Constructs a Json Object from a String.
+  /**
+   * Constructs a Json Object from a string.
    */
-  static ObjectPtr LoadFromString(const std::string& json);
+  static ObjectSharedPtr loadFromString(const std::string& json);
+
+  /**
+   * Constructs a Json Object from a YAML string.
+   */
+  static ObjectSharedPtr loadFromYamlString(const std::string& yaml);
+
+  static const std::string listAsJsonString(const std::list<std::string>& items);
 };
 
-} // Json
+} // namespace Json
+} // namespace Envoy

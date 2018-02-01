@@ -1,109 +1,155 @@
-#include "router_ratelimit.h"
+#include "common/router/router_ratelimit.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "common/common/assert.h"
+#include "common/common/empty_string.h"
+#include "common/protobuf/utility.h"
+
+namespace Envoy {
 namespace Router {
 
-const std::vector<std::reference_wrapper<const RateLimitPolicyEntry>>
-    RateLimitPolicyImpl::empty_rate_limit_;
+const uint64_t RateLimitPolicyImpl::MAX_STAGE_NUMBER = 10UL;
 
-void ServiceToServiceAction::populateDescriptors(const Router::RouteEntry& route,
-                                                 std::vector<::RateLimit::Descriptor>& descriptors,
-                                                 const std::string& local_service_cluster,
-                                                 const Http::HeaderMap&, const std::string&) const {
-  // We limit on 2 dimensions.
-  // 1) All calls to the given cluster.
-  // 2) Calls to the given cluster and from this cluster.
-  // The service side configuration can choose to limit on 1 or both of the above.
-  descriptors.push_back({{{"to_cluster", route.clusterName()}}});
-  descriptors.push_back(
-      {{{"to_cluster", route.clusterName()}, {"from_cluster", local_service_cluster}}});
+bool SourceClusterAction::populateDescriptor(const Router::RouteEntry&,
+                                             RateLimit::Descriptor& descriptor,
+                                             const std::string& local_service_cluster,
+                                             const Http::HeaderMap&,
+                                             const Network::Address::Instance&) const {
+  descriptor.entries_.push_back({"source_cluster", local_service_cluster});
+  return true;
 }
 
-void RequestHeadersAction::populateDescriptors(const Router::RouteEntry&,
-                                               std::vector<::RateLimit::Descriptor>& descriptors,
-                                               const std::string&, const Http::HeaderMap& headers,
-                                               const std::string&) const {
+bool DestinationClusterAction::populateDescriptor(const Router::RouteEntry& route,
+                                                  RateLimit::Descriptor& descriptor,
+                                                  const std::string&, const Http::HeaderMap&,
+                                                  const Network::Address::Instance&) const {
+  descriptor.entries_.push_back({"destination_cluster", route.clusterName()});
+  return true;
+}
+
+bool RequestHeadersAction::populateDescriptor(const Router::RouteEntry&,
+                                              RateLimit::Descriptor& descriptor, const std::string&,
+                                              const Http::HeaderMap& headers,
+                                              const Network::Address::Instance&) const {
   const Http::HeaderEntry* header_value = headers.get(header_name_);
   if (!header_value) {
-    return;
+    return false;
   }
 
-  descriptors.push_back({{{descriptor_key_, header_value->value().c_str()}}});
-
-  if (route_key_.empty()) {
-    return;
-  }
-
-  descriptors.push_back(
-      {{{"route_key", route_key_}, {descriptor_key_, header_value->value().c_str()}}});
+  descriptor.entries_.push_back({descriptor_key_, header_value->value().c_str()});
+  return true;
 }
 
-void RemoteAddressAction::populateDescriptors(const Router::RouteEntry&,
-                                              std::vector<::RateLimit::Descriptor>& descriptors,
-                                              const std::string&, const Http::HeaderMap&,
-                                              const std::string& remote_address) const {
-  if (remote_address.empty()) {
-    return;
+bool RemoteAddressAction::populateDescriptor(
+    const Router::RouteEntry&, RateLimit::Descriptor& descriptor, const std::string&,
+    const Http::HeaderMap&, const Network::Address::Instance& remote_address) const {
+  if (remote_address.type() != Network::Address::Type::Ip) {
+    return false;
   }
 
-  descriptors.push_back({{{"remote_address", remote_address}}});
-
-  if (route_key_.empty()) {
-    return;
-  }
-
-  descriptors.push_back({{{"route_key", route_key_}, {"remote_address", remote_address}}});
+  descriptor.entries_.push_back({"remote_address", remote_address.ip()->addressAsString()});
+  return true;
 }
 
-RateLimitPolicyEntryImpl::RateLimitPolicyEntryImpl(const Json::Object& config)
-    : kill_switch_key_(config.getString("kill_switch_key", "")),
-      stage_(config.getInteger("stage", 0)), route_key_(config.getString("route_key", "")) {
-  for (const Json::ObjectPtr& action : config.getObjectArray("actions")) {
-    std::string type = action->getString("type");
-    if (type == "service_to_service") {
-      actions_.emplace_back(new ServiceToServiceAction());
-    } else if (type == "request_headers") {
-      actions_.emplace_back(new RequestHeadersAction(*action, route_key_));
-    } else if (type == "remote_address") {
-      actions_.emplace_back(new RemoteAddressAction(route_key_));
-    } else {
-      throw EnvoyException(fmt::format("unknown http rate limit filter action '{}'", type));
+bool GenericKeyAction::populateDescriptor(const Router::RouteEntry&,
+                                          RateLimit::Descriptor& descriptor, const std::string&,
+                                          const Http::HeaderMap&,
+                                          const Network::Address::Instance&) const {
+  descriptor.entries_.push_back({"generic_key", descriptor_value_});
+  return true;
+}
+
+HeaderValueMatchAction::HeaderValueMatchAction(
+    const envoy::api::v2::route::RateLimit::Action::HeaderValueMatch& action)
+    : descriptor_value_(action.descriptor_value()),
+      expect_match_(PROTOBUF_GET_WRAPPED_OR_DEFAULT(action, expect_match, true)) {
+  for (const auto& header_matcher : action.headers()) {
+    action_headers_.push_back(header_matcher);
+  }
+}
+
+bool HeaderValueMatchAction::populateDescriptor(const Router::RouteEntry&,
+                                                RateLimit::Descriptor& descriptor,
+                                                const std::string&, const Http::HeaderMap& headers,
+                                                const Network::Address::Instance&) const {
+  if (expect_match_ == ConfigUtility::matchHeaders(headers, action_headers_)) {
+    descriptor.entries_.push_back({"header_match", descriptor_value_});
+    return true;
+  } else {
+    return false;
+  }
+}
+
+RateLimitPolicyEntryImpl::RateLimitPolicyEntryImpl(const envoy::api::v2::route::RateLimit& config)
+    : disable_key_(config.disable_key()),
+      stage_(static_cast<uint64_t>(PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, stage, 0))) {
+  for (const auto& action : config.actions()) {
+    switch (action.action_specifier_case()) {
+    case envoy::api::v2::route::RateLimit::Action::kSourceCluster:
+      actions_.emplace_back(new SourceClusterAction());
+      break;
+    case envoy::api::v2::route::RateLimit::Action::kDestinationCluster:
+      actions_.emplace_back(new DestinationClusterAction());
+      break;
+    case envoy::api::v2::route::RateLimit::Action::kRequestHeaders:
+      actions_.emplace_back(new RequestHeadersAction(action.request_headers()));
+      break;
+    case envoy::api::v2::route::RateLimit::Action::kRemoteAddress:
+      actions_.emplace_back(new RemoteAddressAction());
+      break;
+    case envoy::api::v2::route::RateLimit::Action::kGenericKey:
+      actions_.emplace_back(new GenericKeyAction(action.generic_key()));
+      break;
+    case envoy::api::v2::route::RateLimit::Action::kHeaderValueMatch:
+      actions_.emplace_back(new HeaderValueMatchAction(action.header_value_match()));
+      break;
+    default:
+      NOT_REACHED;
     }
   }
 }
 
 void RateLimitPolicyEntryImpl::populateDescriptors(
-    const Router::RouteEntry& route, std::vector<::RateLimit::Descriptor>& descriptors,
+    const Router::RouteEntry& route, std::vector<RateLimit::Descriptor>& descriptors,
     const std::string& local_service_cluster, const Http::HeaderMap& headers,
-    const std::string& remote_address) const {
+    const Network::Address::Instance& remote_address) const {
+  RateLimit::Descriptor descriptor;
+  bool result = true;
   for (const RateLimitActionPtr& action : actions_) {
-    action->populateDescriptors(route, descriptors, local_service_cluster, headers, remote_address);
-  }
-}
-
-RateLimitPolicyImpl::RateLimitPolicyImpl(const Json::Object& config) {
-  if (config.hasObject("rate_limits")) {
-    std::vector<std::unique_ptr<RateLimitPolicyEntry>> rate_limit_policy;
-    std::vector<std::reference_wrapper<const RateLimitPolicyEntry>> rate_limit_policy_reference;
-    for (const Json::ObjectPtr& rate_limit : config.getObjectArray("rate_limits")) {
-      std::unique_ptr<RateLimitPolicyEntry> rate_limit_policy_entry(
-          new RateLimitPolicyEntryImpl(*rate_limit));
-      rate_limit_policy_reference.emplace_back(*rate_limit_policy_entry);
-      rate_limit_policy.emplace_back(std::move(rate_limit_policy_entry));
+    result = result && action->populateDescriptor(route, descriptor, local_service_cluster, headers,
+                                                  remote_address);
+    if (!result) {
+      break;
     }
-    rate_limit_entries_.emplace_back(std::move(rate_limit_policy));
-    rate_limit_entries_reference_.emplace_back(rate_limit_policy_reference);
+  }
+
+  if (result) {
+    descriptors.emplace_back(descriptor);
   }
 }
 
-const std::vector<std::reference_wrapper<const RateLimitPolicyEntry>>&
-    RateLimitPolicyImpl::getApplicableRateLimit(int64_t) const {
-  // Currently return all rate limit policy entries.
-  // TODO: Implement returning only rate limit policy entries that match the stage setting.
-  if (rate_limit_entries_.empty()) {
-    return empty_rate_limit_;
-  } else {
-    return rate_limit_entries_reference_[0];
+RateLimitPolicyImpl::RateLimitPolicyImpl(
+    const Protobuf::RepeatedPtrField<envoy::api::v2::route::RateLimit>& rate_limits)
+    : rate_limit_entries_reference_(RateLimitPolicyImpl::MAX_STAGE_NUMBER + 1) {
+  for (const auto& rate_limit : rate_limits) {
+    std::unique_ptr<RateLimitPolicyEntry> rate_limit_policy_entry(
+        new RateLimitPolicyEntryImpl(rate_limit));
+    uint64_t stage = rate_limit_policy_entry->stage();
+    ASSERT(stage < rate_limit_entries_reference_.size());
+    rate_limit_entries_reference_[stage].emplace_back(*rate_limit_policy_entry);
+    rate_limit_entries_.emplace_back(std::move(rate_limit_policy_entry));
   }
 }
 
-} // Router
+const std::vector<std::reference_wrapper<const Router::RateLimitPolicyEntry>>&
+RateLimitPolicyImpl::getApplicableRateLimit(uint64_t stage) const {
+  ASSERT(stage < rate_limit_entries_reference_.size());
+  return rate_limit_entries_reference_[stage];
+}
+
+} // namespace Router
+} // namespace Envoy

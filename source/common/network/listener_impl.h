@@ -1,13 +1,14 @@
 #pragma once
 
-#include "listen_socket_impl.h"
-#include "proxy_protocol.h"
-
 #include "envoy/network/listener.h"
 
 #include "common/event/dispatcher_impl.h"
 #include "common/event/libevent.h"
+#include "common/network/listen_socket_impl.h"
 
+#include "event2/event.h"
+
+namespace Envoy {
 namespace Network {
 
 /**
@@ -16,48 +17,22 @@ namespace Network {
 class ListenerImpl : public Listener {
 public:
   ListenerImpl(Event::DispatcherImpl& dispatcher, ListenSocket& socket, ListenerCallbacks& cb,
-               Stats::Store& stats_store, bool use_proxy_proto);
-
-  /**
-   * Accept/process a new connection.
-   * @param fd supplies the new connection's fd.
-   * @param remote_address supplies the remote address for the new connection.
-   */
-  virtual void newConnection(int fd, sockaddr* addr);
-
-  /**
-   * Accept/process a new connection with the given remote address.
-   * @param fd supplies the new connection's fd.
-   * @param remote_address supplies the remote address for the new connection.
-   */
-  virtual void newConnection(int fd, const std::string& remote_address);
+               bool bind_to_port, bool hand_off_restored_destination_connections);
 
 protected:
-  const std::string getAddressName(sockaddr* addr);
+  virtual Address::InstanceConstSharedPtr getLocalAddress(int fd);
 
-  Event::DispatcherImpl& dispatcher_;
+  Address::InstanceConstSharedPtr local_address_;
   ListenerCallbacks& cb_;
-  bool use_proxy_proto_;
-  ProxyProtocol proxy_protocol_;
+  const bool hand_off_restored_destination_connections_;
 
 private:
   static void errorCallback(evconnlistener* listener, void* context);
+  static void listenCallback(evconnlistener*, evutil_socket_t fd, sockaddr* remote_addr,
+                             int remote_addr_len, void* arg);
 
   Event::Libevent::ListenerPtr listener_;
 };
 
-class SslListenerImpl : public ListenerImpl {
-public:
-  SslListenerImpl(Event::DispatcherImpl& dispatcher, Ssl::Context& ssl_ctx, ListenSocket& socket,
-                  ListenerCallbacks& cb, Stats::Store& stats_store, bool use_proxy_proto)
-      : ListenerImpl(dispatcher, socket, cb, stats_store, use_proxy_proto), ssl_ctx_(ssl_ctx) {}
-
-  // ListenerImpl
-  void newConnection(int fd, sockaddr* addr) override;
-  void newConnection(int fd, const std::string& remote_address) override;
-
-private:
-  Ssl::Context& ssl_ctx_;
-};
-
-} // Network
+} // namespace Network
+} // namespace Envoy

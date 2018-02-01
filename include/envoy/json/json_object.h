@@ -1,12 +1,19 @@
 #pragma once
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "envoy/common/exception.h"
 #include "envoy/common/pure.h"
 
+namespace Envoy {
 namespace Json {
 class Object;
 
-typedef std::unique_ptr<Object> ObjectPtr;
+typedef std::shared_ptr<Object> ObjectSharedPtr;
 
 // @return false if immediate exit from iteration required.
 typedef std::function<bool(const std::string&, const Object&)> ObjectCallback;
@@ -29,9 +36,9 @@ public:
   /**
    * Convert a generic object into an array of objects. This is useful for dealing
    * with arrays of arrays.
-   * @return std::vector<ObjectPtr> the converted object.
+   * @return std::vector<ObjectSharedPtr> the converted object.
    */
-  virtual std::vector<ObjectPtr> asObjectArray() const PURE;
+  virtual std::vector<ObjectSharedPtr> asObjectArray() const PURE;
 
   /**
    * Get a boolean value by name.
@@ -68,16 +75,24 @@ public:
    * @param name supplies the key name.
    * @param allow_empty supplies whether to return an empty object if the key does not
    * exist.
-   * @return ObjectObjectPtr the sub-object.
+   * @return ObjectObjectSharedPtr the sub-object.
    */
-  virtual ObjectPtr getObject(const std::string& name, bool allow_empty = false) const PURE;
+  virtual ObjectSharedPtr getObject(const std::string& name, bool allow_empty = false) const PURE;
+
+  /**
+   * Determine if an object is null.
+   * @return bool is the object null?
+   */
+  virtual bool isNull() const PURE;
 
   /**
    * Get an array by name.
    * @param name supplies the key name.
-   * @return std::vector<ObjectPtr> the array of JSON  objects.
+   * @param allow_empty specifies whether to return an empty array if the key does not exist.
+   * @return std::vector<ObjectSharedPtr> the array of JSON  objects.
    */
-  virtual std::vector<ObjectPtr> getObjectArray(const std::string& name) const PURE;
+  virtual std::vector<ObjectSharedPtr> getObjectArray(const std::string& name,
+                                                      bool allow_empty = false) const PURE;
 
   /**
    * Get a string value by name.
@@ -98,9 +113,11 @@ public:
   /**
    * Get a string array by name.
    * @param name supplies the key name.
+   * @param allow_empty specifies whether to return an empty array if the key does not exist.
    * @return std::vector<std::string> the array of strings.
    */
-  virtual std::vector<std::string> getStringArray(const std::string& name) const PURE;
+  virtual std::vector<std::string> getStringArray(const std::string& name,
+                                                  bool allow_empty = false) const PURE;
 
   /**
    * Get a double value by name.
@@ -118,6 +135,12 @@ public:
   virtual double getDouble(const std::string& name, double default_value) const PURE;
 
   /**
+   * @return a hash of the JSON object. This is a hash of each nested element in stable order.
+   *         It does not consider white space that was originally in the parsed JSON.
+   */
+  virtual uint64_t hash() const PURE;
+
+  /**
    * Iterate over key-value pairs in an Object and call callback on each pair.
    */
   virtual void iterate(const ObjectCallback& callback) const PURE;
@@ -127,6 +150,45 @@ public:
    * @param name supplies the key name to lookup.
    */
   virtual bool hasObject(const std::string& name) const PURE;
+
+  /**
+   * Validates JSON object against passed in schema.
+   * @param schema supplies the schema in string format. A Json::Exception will be thrown if
+   *        the JSON object doesn't conform to the supplied schema or the schema itself is not
+   *        valid.
+   */
+  virtual void validateSchema(const std::string& schema) const PURE;
+
+  /**
+   * @return the value of the object as a string (where the object is a string).
+   */
+  virtual std::string asString() const PURE;
+
+  /**
+   * @return the value of the object as a boolean (where the object is a boolean).
+   */
+  virtual bool asBoolean() const PURE;
+
+  /**
+   * @return the value of the object as a double (where the object is a double).
+   */
+  virtual double asDouble() const PURE;
+
+  /**
+   * @return the value of the object as an integer (where the object is an integer).
+   */
+  virtual int64_t asInteger() const PURE;
+
+  /**
+   * @return the JSON string representation of the object.
+   */
+  virtual std::string asJsonString() const PURE;
+
+  /**
+   * @return true if the JSON object is empty;
+   */
+  virtual bool empty() const PURE;
 };
 
-} // Json
+} // namespace Json
+} // namespace Envoy

@@ -1,88 +1,42 @@
 #pragma once
 
-#include "test/integration/fake_upstream.h"
-#include "test/integration/integration.h"
+#include <memory>
+#include <string>
+
+#include "test/integration/http_integration.h"
 #include "test/integration/server.h"
-
-#include "common/http/codec_client.h"
-#include "common/stats/stats_impl.h"
-#include "common/ssl/openssl.h"
-
 #include "test/mocks/runtime/mocks.h"
+
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 using testing::NiceMock;
 
+namespace Envoy {
 namespace Ssl {
 
-class TestServerContextImpl : public ContextImpl, public ServerContext {
+class SslIntegrationTest : public HttpIntegrationTest,
+                           public testing::TestWithParam<Network::Address::IpVersion> {
 public:
-  TestServerContextImpl(const std::string& name, Stats::Store& stats, ContextConfig& config)
-      : ContextImpl(name, stats, config) {}
-};
+  SslIntegrationTest() : HttpIntegrationTest(Http::CodecClient::Type::HTTP1, GetParam()) {}
 
-class MockRuntimeIntegrationTestServer : public IntegrationTestServer {
-public:
-  static IntegrationTestServerPtr create(const std::string& config_path) {
-    IntegrationTestServerPtr server{new MockRuntimeIntegrationTestServer(config_path)};
-    server->start();
-    return server;
-  }
+  void initialize() override;
 
-  // Server::ComponentFactory
-  Runtime::LoaderPtr createRuntime(Server::Instance&, Server::Configuration::Initial&) override {
-    runtime_ = new NiceMock<Runtime::MockLoader>();
-    return Runtime::LoaderPtr{runtime_};
-  }
+  void TearDown() override;
 
-  Runtime::MockLoader* runtime_;
-
-private:
-  MockRuntimeIntegrationTestServer(const std::string& config_path)
-      : IntegrationTestServer(config_path) {}
-};
-
-class SslIntegrationTest : public BaseIntegrationTest, public testing::Test {
-public:
-  /**
-   * Global initializer for all integration tests.
-   */
-  static void SetUpTestCase() {
-    test_server_ =
-        MockRuntimeIntegrationTestServer::create("test/config/integration/server_ssl.json");
-    upstream_ssl_ctx_ = createUpstreamSslContext("upstream", store());
-    client_ssl_ctx_alpn_ = createClientSslContext("client", store(), true);
-    client_ssl_ctx_no_alpn_ = createClientSslContext("client", store(), false);
-    fake_upstreams_.emplace_back(
-        new FakeUpstream(upstream_ssl_ctx_.get(), 11000, FakeHttpConnection::Type::HTTP1));
-    fake_upstreams_.emplace_back(
-        new FakeUpstream(upstream_ssl_ctx_.get(), 11001, FakeHttpConnection::Type::HTTP1));
-  }
-
-  /**
-   * Global destructor for all integration tests.
-   */
-  static void TearDownTestCase() {
-    test_server_.reset();
-    fake_upstreams_.clear();
-    upstream_ssl_ctx_.reset();
-    client_ssl_ctx_alpn_.reset();
-    client_ssl_ctx_no_alpn_.reset();
-  }
-
-  Network::ClientConnectionPtr makeSslClientConnection(bool alpn);
-
-  static ServerContextPtr createUpstreamSslContext(const std::string& name, Stats::Store& store);
-  static ClientContextPtr createClientSslContext(const std::string& name, Stats::Store& store,
-                                                 bool alpn);
-
-  static Stats::Store& store() { return test_server_->server().stats(); }
-
+  Network::ClientConnectionPtr makeSslConn() { return makeSslClientConnection(false, false); }
+  Network::ClientConnectionPtr makeSslClientConnection(bool alpn, bool san);
   void checkStats();
 
 private:
-  static ServerContextPtr upstream_ssl_ctx_;
-  static ClientContextPtr client_ssl_ctx_alpn_;
-  static ClientContextPtr client_ssl_ctx_no_alpn_;
+  std::unique_ptr<Runtime::Loader> runtime_;
+  std::unique_ptr<ContextManager> context_manager_;
+
+  Network::TransportSocketFactoryPtr client_ssl_ctx_plain_;
+  Network::TransportSocketFactoryPtr client_ssl_ctx_alpn_;
+  Network::TransportSocketFactoryPtr client_ssl_ctx_san_;
+  Network::TransportSocketFactoryPtr client_ssl_ctx_alpn_san_;
 };
 
-} // Ssl
+} // namespace Ssl
+} // namespace Envoy

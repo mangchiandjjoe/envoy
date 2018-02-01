@@ -1,11 +1,16 @@
 #pragma once
 
-#include "upstream_impl.h"
+#include <chrono>
+#include <cstdint>
+#include <functional>
+#include <string>
 
 #include "envoy/thread_local/thread_local.h"
 
 #include "common/common/empty_string.h"
+#include "common/upstream/upstream_impl.h"
 
+namespace Envoy {
 namespace Upstream {
 
 /**
@@ -23,63 +28,80 @@ namespace Upstream {
  */
 class LogicalDnsCluster : public ClusterImplBase {
 public:
-  LogicalDnsCluster(const Json::Object& config, Runtime::Loader& runtime, Stats::Store& stats,
-                    Ssl::ContextManager& ssl_context_manager, Network::DnsResolver& dns_resolver,
-                    ThreadLocal::Instance& tls);
+  LogicalDnsCluster(const envoy::api::v2::Cluster& cluster, Runtime::Loader& runtime,
+                    Stats::Store& stats, Ssl::ContextManager& ssl_context_manager,
+                    Network::DnsResolverSharedPtr dns_resolver, ThreadLocal::SlotAllocator& tls,
+                    ClusterManager& cm, Event::Dispatcher& dispatcher, bool added_via_api);
+
+  ~LogicalDnsCluster();
 
   // Upstream::Cluster
-  void setInitializedCb(std::function<void()> callback) override {
-    initialize_callback_ = callback;
-  }
-  void shutdown() override {}
+  InitializePhase initializePhase() const override { return InitializePhase::Primary; }
 
 private:
   struct LogicalHost : public HostImpl {
-    LogicalHost(ClusterInfoPtr cluster, const std::string& url, LogicalDnsCluster& parent)
-        : HostImpl(cluster, url, false, 1, ""), parent_(parent) {}
+    LogicalHost(ClusterInfoConstSharedPtr cluster, const std::string& hostname,
+                Network::Address::InstanceConstSharedPtr address, LogicalDnsCluster& parent)
+        : HostImpl(cluster, hostname, address, envoy::api::v2::Metadata::default_instance(), 1,
+                   envoy::api::v2::Locality().default_instance()),
+          parent_(parent) {}
 
     // Upstream::Host
-    CreateConnectionData createConnection(Event::Dispatcher& dispatcher) const override;
+    CreateConnectionData
+    createConnection(Event::Dispatcher& dispatcher,
+                     const Network::ConnectionSocket::OptionsSharedPtr& options) const override;
 
     LogicalDnsCluster& parent_;
   };
 
   struct RealHostDescription : public HostDescription {
-    RealHostDescription(const std::string& url, ConstHostPtr logical_host)
-        : url_(url), logical_host_(logical_host) {}
+    RealHostDescription(Network::Address::InstanceConstSharedPtr address,
+                        HostConstSharedPtr logical_host)
+        : address_(address), logical_host_(logical_host) {}
 
     // Upstream:HostDescription
     bool canary() const override { return false; }
+    const envoy::api::v2::Metadata& metadata() const override {
+      return envoy::api::v2::Metadata::default_instance();
+    }
     const ClusterInfo& cluster() const override { return logical_host_->cluster(); }
-    Outlier::DetectorHostSink& outlierDetector() const override {
+    HealthCheckHostMonitor& healthChecker() const override {
+      return logical_host_->healthChecker();
+    }
+    Outlier::DetectorHostMonitor& outlierDetector() const override {
       return logical_host_->outlierDetector();
     }
     const HostStats& stats() const override { return logical_host_->stats(); }
-    const std::string& url() const override { return url_; }
-    const std::string& zone() const override { return EMPTY_STRING; }
+    const std::string& hostname() const override { return logical_host_->hostname(); }
+    Network::Address::InstanceConstSharedPtr address() const override { return address_; }
+    const envoy::api::v2::Locality& locality() const override {
+      return envoy::api::v2::Locality().default_instance();
+    }
 
-    const std::string url_;
-    ConstHostPtr logical_host_;
+    Network::Address::InstanceConstSharedPtr address_;
+    HostConstSharedPtr logical_host_;
   };
 
   struct PerThreadCurrentHostData : public ThreadLocal::ThreadLocalObject {
-    // ThreadLocal::ThreadLocalObject
-    void shutdown() override {}
-
-    std::string current_resolved_url_;
+    Network::Address::InstanceConstSharedPtr current_resolved_address_;
   };
 
   void startResolve();
 
-  Network::DnsResolver& dns_resolver_;
+  // ClusterImplBase
+  void startPreInit() override;
+
+  Network::DnsResolverSharedPtr dns_resolver_;
   const std::chrono::milliseconds dns_refresh_rate_ms_;
-  ThreadLocal::Instance& tls_;
-  uint32_t tls_slot_;
-  std::function<void()> initialize_callback_;
+  Network::DnsLookupFamily dns_lookup_family_;
+  ThreadLocal::SlotPtr tls_;
   Event::TimerPtr resolve_timer_;
   std::string dns_url_;
-  std::string current_resolved_url_;
-  HostPtr logical_host_;
+  std::string hostname_;
+  Network::Address::InstanceConstSharedPtr current_resolved_address_;
+  HostSharedPtr logical_host_;
+  Network::ActiveDnsQuery* active_dns_query_{};
 };
 
-} // Upstream
+} // namespace Upstream
+} // namespace Envoy

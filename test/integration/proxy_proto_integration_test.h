@@ -1,27 +1,25 @@
 #pragma once
 
-#include "test/integration/fake_upstream.h"
-#include "test/integration/integration.h"
-#include "test/integration/server.h"
-
 #include "common/http/codec_client.h"
 #include "common/stats/stats_impl.h"
 
-class ProxyProtoIntegrationTest : public BaseIntegrationTest, public testing::Test {
-public:
-  /**
-   * Global initializer for all integration tests.
-   */
-  static void SetUpTestCase() {
-    test_server_ = IntegrationTestServer::create("test/config/integration/server_proxy_proto.json");
-    fake_upstreams_.emplace_back(new FakeUpstream(11000, FakeHttpConnection::Type::HTTP1));
-  }
+#include "test/integration/fake_upstream.h"
+#include "test/integration/http_integration.h"
+#include "test/integration/server.h"
 
-  /**
-   * Global destructor for all integration tests.
-   */
-  static void TearDownTestCase() {
-    test_server_.reset();
-    fake_upstreams_.clear();
+#include "gtest/gtest.h"
+
+namespace Envoy {
+class ProxyProtoIntegrationTest : public HttpIntegrationTest,
+                                  public testing::TestWithParam<Network::Address::IpVersion> {
+public:
+  ProxyProtoIntegrationTest() : HttpIntegrationTest(Http::CodecClient::Type::HTTP1, GetParam()) {
+    config_helper_.addConfigModifier(
+        [&](envoy::config::bootstrap::v2::Bootstrap& bootstrap) -> void {
+          auto* listener = bootstrap.mutable_static_resources()->mutable_listeners(0);
+          auto* filter_chain = listener->mutable_filter_chains(0);
+          filter_chain->mutable_use_proxy_proto()->set_value(true);
+        });
   }
 };
+} // namespace Envoy

@@ -1,0 +1,117 @@
+references:
+  envoy-build-image: &envoy-build-image
+    envoyproxy/envoy-build:61b38528d7e46ced9d749d278ba185332310ca95
+
+version: 2
+jobs:
+   release:
+     docker:
+       - image: *envoy-build-image
+     resource_class: xlarge
+     working_directory: /source
+     steps:
+       - checkout
+       - run: ci/do_circle_ci.sh bazel.release
+       - setup_remote_docker
+       - run: ci/docker_push.sh
+       - run: ci/docker_tag.sh
+   asan:
+     docker:
+       - image: *envoy-build-image
+     resource_class: xlarge
+     working_directory: /source
+     steps:
+       - checkout
+       - run: ci/do_circle_ci.sh bazel.asan
+   tsan:
+     docker:
+       - image: *envoy-build-image
+     resource_class: xlarge
+     working_directory: /source
+     steps:
+       - checkout
+       - run: ci/do_circle_ci.sh bazel.tsan
+   ipv6_tests:
+     machine: true
+     steps:
+     - checkout
+     - run:
+         name: enable ipv6
+         command: |
+           cat <<'EOF' | sudo tee /etc/docker/daemon.json
+           {
+             "ipv6": true,
+             "fixed-cidr-v6": "2001:db8:1::/64"
+           }
+           EOF
+
+           sudo service docker restart
+     - run: ./ci/do_circle_ci_ipv6_tests.sh
+
+   coverage:
+     docker:
+       - image: *envoy-build-image
+     resource_class: xlarge
+     working_directory: /source
+     steps:
+       - checkout
+       - run: ci/do_circle_ci.sh bazel.coverage
+       - run: ci/coverage_publish.sh
+       - store_artifacts:
+           path: /build/envoy/generated/coverage
+   format:
+     docker:
+       - image: *envoy-build-image
+     resource_class: small
+     working_directory: /source
+     steps:
+       - checkout
+       - run: ci/do_circle_ci.sh check_format
+   build_image:
+     docker:
+       - image: circleci/python:2.7
+         environment:
+           # See comment in do_circle_ci.sh for why we do this.
+           NUM_CPUS: 8
+     resource_class: xlarge
+     steps:
+       - checkout
+       - setup_remote_docker
+       - run: ci/build_container/docker_push.sh
+   docs:
+     docker:
+       - image: *envoy-build-image
+     resource_class: xlarge
+     working_directory: /source
+     steps:
+       - checkout
+       - add_ssh_keys
+       - run: ci/do_circle_ci.sh docs
+   mac:
+     macos:
+       xcode: "8.3.3"
+     steps:
+       - run: sudo ntpdate -vu time.apple.com
+       - checkout
+       - run: ci/mac_ci_setup.sh
+       - run: ci/mac_ci_steps.sh
+
+workflows:
+  version: 2
+  all:
+    jobs:
+      - release:
+          filters:
+            tags:
+              only: /^v.*/
+      - asan
+      - tsan
+      - ipv6_tests
+      - coverage
+      - format
+      - build_image
+      - docs:
+          filters:
+            tags:
+              only: /^v.*/
+      - mac

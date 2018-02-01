@@ -1,131 +1,235 @@
-#include "statsd.h"
+#include "common/stats/statsd.h"
+
+#include <chrono>
+#include <cstdint>
+#include <string>
 
 #include "envoy/common/exception.h"
 #include "envoy/event/dispatcher.h"
 #include "envoy/upstream/cluster_manager.h"
 
-#include "common/buffer/buffer_impl.h"
 #include "common/common/assert.h"
-#include "common/network/utility.h"
+#include "common/common/fmt.h"
+#include "common/common/utility.h"
+#include "common/config/utility.h"
 
+namespace Envoy {
 namespace Stats {
 namespace Statsd {
 
-Writer::Writer(uint32_t port) {
-  Network::AddrInfoPtr resolved(Network::Utility::resolveTCP("", port));
-  fd_ = socket(AF_INET, SOCK_DGRAM, 0);
+Writer::Writer(Network::Address::InstanceConstSharedPtr address) {
+  fd_ = address->socket(Network::Address::SocketType::Datagram);
   ASSERT(fd_ != -1);
 
-  int rc = connect(fd_, resolved->ai_addr, resolved->ai_addrlen);
+  int rc = address->connect(fd_);
   ASSERT(rc != -1);
   UNREFERENCED_PARAMETER(rc);
 }
 
-Writer::~Writer() { close(fd_); }
-
-void Writer::writeCounter(const std::string& name, uint64_t increment) {
-  std::string message(fmt::format("envoy.{}:{}|c", name, increment));
-  send(message);
+Writer::~Writer() {
+  if (fd_ != -1) {
+    RELEASE_ASSERT(close(fd_) == 0);
+  }
 }
 
-void Writer::writeGauge(const std::string& name, uint64_t value) {
-  std::string message(fmt::format("envoy.{}:{}|g", name, value));
-  send(message);
-}
-
-void Writer::writeTimer(const std::string& name, const std::chrono::milliseconds& ms) {
-  std::string message(fmt::format("envoy.{}:{}|ms", name, ms.count()));
-  send(message);
-}
-
-void Writer::send(const std::string& message) {
+void Writer::write(const std::string& message) {
   ::send(fd_, message.c_str(), message.size(), MSG_DONTWAIT);
 }
 
-void UdpStatsdSink::flushCounter(const std::string& name, uint64_t delta) {
-  writer().writeCounter(name, delta);
+UdpStatsdSink::UdpStatsdSink(ThreadLocal::SlotAllocator& tls,
+                             Network::Address::InstanceConstSharedPtr address, const bool use_tag)
+    : tls_(tls.allocateSlot()), server_address_(std::move(address)), use_tag_(use_tag) {
+  tls_->set([this](Event::Dispatcher&) -> ThreadLocal::ThreadLocalObjectSharedPtr {
+    return std::make_shared<Writer>(this->server_address_);
+  });
 }
 
-void UdpStatsdSink::flushGauge(const std::string& name, uint64_t value) {
-  writer().writeGauge(name, value);
+void UdpStatsdSink::flushCounter(const Counter& counter, uint64_t delta) {
+  const std::string message(
+      fmt::format("envoy.{}:{}|c{}", getName(counter), delta, buildTagStr(counter.tags())));
+  tls_->getTyped<Writer>().write(message);
 }
 
-void UdpStatsdSink::onTimespanComplete(const std::string& name, std::chrono::milliseconds ms) {
-  writer().writeTimer(name, ms);
+void UdpStatsdSink::flushGauge(const Gauge& gauge, uint64_t value) {
+  const std::string message(
+      fmt::format("envoy.{}:{}|g{}", getName(gauge), value, buildTagStr(gauge.tags())));
+  tls_->getTyped<Writer>().write(message);
 }
 
-TcpStatsdSink::TcpStatsdSink(const std::string& stat_cluster, const std::string& stat_host,
-                             const std::string& cluster_name, ThreadLocal::Instance& tls,
-                             Upstream::ClusterManager& cluster_manager)
-    : stat_cluster_(stat_cluster), stat_host_(stat_host), cluster_name_(cluster_name), tls_(tls),
-      tls_slot_(tls.allocateSlot()), cluster_manager_(cluster_manager) {
+void UdpStatsdSink::onHistogramComplete(const Histogram& histogram, uint64_t value) {
+  // For statsd histograms are all timers.
+  const std::string message(fmt::format("envoy.{}:{}|ms{}", getName(histogram),
+                                        std::chrono::milliseconds(value).count(),
+                                        buildTagStr(histogram.tags())));
+  tls_->getTyped<Writer>().write(message);
+}
 
-  if (!cluster_manager.get(cluster_name)) {
-    throw EnvoyException(fmt::format("unknown TCP statsd upstream cluster: {}", cluster_name));
+const std::string UdpStatsdSink::getName(const Metric& metric) {
+  if (use_tag_) {
+    return metric.tagExtractedName();
+  } else {
+    return metric.name();
+  }
+}
+
+const std::string UdpStatsdSink::buildTagStr(const std::vector<Tag>& tags) {
+  if (!use_tag_ || tags.empty()) {
+    return "";
   }
 
-  if (stat_cluster.empty() || stat_host.empty()) {
-    throw EnvoyException(
-        fmt::format("TCP statsd requires setting --service-cluster and --service-node"));
+  std::vector<std::string> tag_strings;
+  tag_strings.reserve(tags.size());
+  for (const Tag& tag : tags) {
+    tag_strings.emplace_back(tag.name_ + ":" + tag.value_);
   }
+  return "|#" + StringUtil::join(tag_strings, ",");
+}
 
-  tls.set(tls_slot_, [this](Event::Dispatcher& dispatcher) -> ThreadLocal::ThreadLocalObjectPtr {
-    return ThreadLocal::ThreadLocalObjectPtr{new TlsSink(*this, dispatcher)};
+char TcpStatsdSink::STAT_PREFIX[] = "envoy.";
+
+TcpStatsdSink::TcpStatsdSink(const LocalInfo::LocalInfo& local_info,
+                             const std::string& cluster_name, ThreadLocal::SlotAllocator& tls,
+                             Upstream::ClusterManager& cluster_manager, Stats::Scope& scope)
+    : tls_(tls.allocateSlot()), cluster_manager_(cluster_manager),
+      cx_overflow_stat_(scope.counter("statsd.cx_overflow")) {
+
+  Config::Utility::checkClusterAndLocalInfo("tcp statsd", cluster_name, cluster_manager,
+                                            local_info);
+  cluster_info_ = cluster_manager.get(cluster_name)->info();
+  tls_->set([this](Event::Dispatcher& dispatcher) -> ThreadLocal::ThreadLocalObjectSharedPtr {
+    return std::make_shared<TlsSink>(*this, dispatcher);
   });
 }
 
 TcpStatsdSink::TlsSink::TlsSink(TcpStatsdSink& parent, Event::Dispatcher& dispatcher)
     : parent_(parent), dispatcher_(dispatcher) {}
 
-TcpStatsdSink::TlsSink::~TlsSink() { ASSERT(!connection_); }
+TcpStatsdSink::TlsSink::~TlsSink() {
+  if (connection_) {
+    connection_->close(Network::ConnectionCloseType::NoFlush);
+  }
+}
+
+void TcpStatsdSink::TlsSink::beginFlush(bool expect_empty_buffer) {
+  ASSERT(!expect_empty_buffer || buffer_.length() == 0);
+  ASSERT(current_slice_mem_ == nullptr);
+  UNREFERENCED_PARAMETER(expect_empty_buffer);
+
+  uint64_t num_iovecs = buffer_.reserve(FLUSH_SLICE_SIZE_BYTES, &current_buffer_slice_, 1);
+  ASSERT(num_iovecs == 1);
+  UNREFERENCED_PARAMETER(num_iovecs);
+
+  ASSERT(current_buffer_slice_.len_ >= FLUSH_SLICE_SIZE_BYTES);
+  current_slice_mem_ = reinterpret_cast<char*>(current_buffer_slice_.mem_);
+}
+
+void TcpStatsdSink::TlsSink::commonFlush(const std::string& name, uint64_t value, char stat_type) {
+  ASSERT(current_slice_mem_ != nullptr);
+  // 40 > 6 (prefix) + 4 (random chars) + 30 for number (bigger than it will ever be)
+  const uint32_t max_size = name.size() + 40;
+  if (current_buffer_slice_.len_ - usedBuffer() < max_size) {
+    endFlush(false);
+    beginFlush(false);
+  }
+
+  // Produces something like "envoy.{}:{}|c\n"
+  // This written this way for maximum perf since with a large number of stats and at a high flush
+  // rate this can become expensive.
+  const char* snapped_current = current_slice_mem_;
+  memcpy(current_slice_mem_, STAT_PREFIX, sizeof(STAT_PREFIX) - 1);
+  current_slice_mem_ += sizeof(STAT_PREFIX) - 1;
+  memcpy(current_slice_mem_, name.c_str(), name.size());
+  current_slice_mem_ += name.size();
+  *current_slice_mem_++ = ':';
+  current_slice_mem_ += StringUtil::itoa(current_slice_mem_, 30, value);
+  *current_slice_mem_++ = '|';
+  *current_slice_mem_++ = stat_type;
+  *current_slice_mem_++ = '\n';
+
+  ASSERT(static_cast<uint64_t>(current_slice_mem_ - snapped_current) < max_size);
+  UNREFERENCED_PARAMETER(snapped_current);
+}
 
 void TcpStatsdSink::TlsSink::flushCounter(const std::string& name, uint64_t delta) {
-  write(fmt::format("envoy.{}:{}|c\n", name, delta));
+  commonFlush(name, delta, 'c');
 }
 
 void TcpStatsdSink::TlsSink::flushGauge(const std::string& name, uint64_t value) {
-  write(fmt::format("envoy.{}:{}|g\n", name, value));
+  commonFlush(name, value, 'g');
 }
 
-void TcpStatsdSink::TlsSink::onEvent(uint32_t events) {
-  if (events & Network::ConnectionEvent::LocalClose ||
-      events & Network::ConnectionEvent::RemoteClose) {
+void TcpStatsdSink::TlsSink::endFlush(bool do_write) {
+  ASSERT(current_slice_mem_ != nullptr);
+  current_buffer_slice_.len_ = usedBuffer();
+  buffer_.commit(&current_buffer_slice_, 1);
+  current_slice_mem_ = nullptr;
+  if (do_write) {
+    write(buffer_);
+  }
+}
+
+void TcpStatsdSink::TlsSink::onEvent(Network::ConnectionEvent event) {
+  if (event == Network::ConnectionEvent::LocalClose ||
+      event == Network::ConnectionEvent::RemoteClose) {
     dispatcher_.deferredDelete(std::move(connection_));
   }
 }
 
 void TcpStatsdSink::TlsSink::onTimespanComplete(const std::string& name,
                                                 std::chrono::milliseconds ms) {
-  write(fmt::format("envoy.{}:{}|ms\n", name, ms.count()));
+  // Ultimately it would be nice to perf optimize this path also, but it's not very frequent. It's
+  // also currently not possible that this interleaves with any counter/gauge flushing.
+  ASSERT(current_slice_mem_ == nullptr);
+  Buffer::OwnedImpl buffer(fmt::format("envoy.{}:{}|ms\n", name, ms.count()));
+  write(buffer);
 }
 
-void TcpStatsdSink::TlsSink::shutdown() {
-  shutdown_ = true;
-  if (connection_) {
-    connection_->close(Network::ConnectionCloseType::NoFlush);
-  }
-}
-
-void TcpStatsdSink::TlsSink::write(const std::string& stat) {
-  if (shutdown_) {
+void TcpStatsdSink::TlsSink::write(Buffer::Instance& buffer) {
+  // Guard against the stats connection backing up. In this case we probably have no visibility
+  // into what is going on externally, but we also increment a stat that should be viewable
+  // locally.
+  // NOTE: In the current implementation, we write most stats on the main thread, but timers
+  //       get emitted on the worker threads. Since this is using global buffered data, it's
+  //       possible that we are about to kill the connection that is not actually backed up.
+  //       This is essentially a panic state, so it's not worth keeping per thread buffer stats,
+  //       since if we stay over, the other threads will eventually kill their connections too.
+  // TODO(mattklein123): The use of the stat is somewhat of a hack, and should be replaced with
+  // real flow control callbacks once they are available.
+  if (parent_.cluster_info_->stats().upstream_cx_tx_bytes_buffered_.value() >
+      MAX_BUFFERED_STATS_BYTES) {
+    if (connection_) {
+      connection_->close(Network::ConnectionCloseType::NoFlush);
+    }
+    parent_.cx_overflow_stat_.inc();
+    buffer.drain(buffer.length());
     return;
   }
 
   if (!connection_) {
     Upstream::Host::CreateConnectionData info =
-        parent_.cluster_manager_.tcpConnForCluster(parent_.cluster_name_);
+        parent_.cluster_manager_.tcpConnForCluster(parent_.cluster_info_->name(), nullptr);
     if (!info.connection_) {
       return;
     }
 
     connection_ = std::move(info.connection_);
     connection_->addConnectionCallbacks(*this);
+    connection_->setConnectionStats({parent_.cluster_info_->stats().upstream_cx_rx_bytes_total_,
+                                     parent_.cluster_info_->stats().upstream_cx_rx_bytes_buffered_,
+                                     parent_.cluster_info_->stats().upstream_cx_tx_bytes_total_,
+                                     parent_.cluster_info_->stats().upstream_cx_tx_bytes_buffered_,
+                                     &parent_.cluster_info_->stats().bind_errors_});
     connection_->connect();
   }
 
-  Buffer::OwnedImpl buffer(stat);
   connection_->write(buffer);
 }
 
-} // Statsd
-} // Stats
+uint64_t TcpStatsdSink::TlsSink::usedBuffer() {
+  ASSERT(current_slice_mem_ != nullptr);
+  return current_slice_mem_ - reinterpret_cast<char*>(current_buffer_slice_.mem_);
+}
+
+} // namespace Statsd
+} // namespace Stats
+} // namespace Envoy

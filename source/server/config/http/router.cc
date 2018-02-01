@@ -1,39 +1,54 @@
+#include "server/config/http/router.h"
+
+#include <string>
+
+#include "envoy/api/v2/filter/http/router.pb.validate.h"
+#include "envoy/registry/registry.h"
+
+#include "common/config/filter_json.h"
+#include "common/json/config_schemas.h"
 #include "common/router/router.h"
 #include "common/router/shadow_writer_impl.h"
-#include "server/config/network/http_connection_manager.h"
 
+namespace Envoy {
 namespace Server {
 namespace Configuration {
 
+HttpFilterFactoryCb
+RouterFilterConfig::createFilter(const envoy::api::v2::filter::http::Router& proto_config,
+                                 const std::string& stat_prefix, FactoryContext& context) {
+  Router::FilterConfigSharedPtr filter_config(new Router::FilterConfig(
+      stat_prefix, context,
+      Router::ShadowWriterPtr{new Router::ShadowWriterImpl(context.clusterManager())},
+      proto_config));
+
+  return [filter_config](Http::FilterChainFactoryCallbacks& callbacks) -> void {
+    callbacks.addStreamDecoderFilter(std::make_shared<Router::ProdFilter>(*filter_config));
+  };
+}
+
+HttpFilterFactoryCb RouterFilterConfig::createFilterFactory(const Json::Object& json_config,
+                                                            const std::string& stat_prefix,
+                                                            FactoryContext& context) {
+  envoy::api::v2::filter::http::Router proto_config;
+  Config::FilterJson::translateRouter(json_config, proto_config);
+  return createFilter(proto_config, stat_prefix, context);
+}
+
+HttpFilterFactoryCb
+RouterFilterConfig::createFilterFactoryFromProto(const Protobuf::Message& proto_config,
+                                                 const std::string& stat_prefix,
+                                                 FactoryContext& context) {
+  return createFilter(
+      MessageUtil::downcastAndValidate<const envoy::api::v2::filter::http::Router&>(proto_config),
+      stat_prefix, context);
+}
+
 /**
- * Config registration for the router filter. @see HttpFilterConfigFactory.
+ * Static registration for the router filter. @see RegisterFactory.
  */
-class FilterConfig : public HttpFilterConfigFactory {
-public:
-  HttpFilterFactoryCb tryCreateFilterFactory(HttpFilterType type, const std::string& name,
-                                             const Json::Object& json_config,
-                                             const std::string& stat_prefix,
-                                             Instance& server) override {
-    if (type != HttpFilterType::Decoder || name != "router") {
-      return nullptr;
-    }
+static Registry::RegisterFactory<RouterFilterConfig, NamedHttpFilterConfigFactory> register_;
 
-    Router::FilterConfigPtr config(new Router::FilterConfig(
-        stat_prefix, server.options().serviceZone(), server.stats(), server.clusterManager(),
-        server.runtime(), server.random(),
-        Router::ShadowWriterPtr{new Router::ShadowWriterImpl(server.clusterManager())},
-        json_config.getBoolean("dynamic_stats", true)));
-
-    return [config](Http::FilterChainFactoryCallbacks& callbacks) -> void {
-      callbacks.addStreamDecoderFilter(std::make_shared<Router::ProdFilter>(*config));
-    };
-  }
-};
-
-/**
- * Static registration for the router filter. @see RegisterHttpFilterConfigFactory.
- */
-static RegisterHttpFilterConfigFactory<FilterConfig> register_;
-
-} // Configuration
-} // Server
+} // namespace Configuration
+} // namespace Server
+} // namespace Envoy

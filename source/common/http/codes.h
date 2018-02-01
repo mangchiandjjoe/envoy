@@ -1,9 +1,14 @@
 #pragma once
 
+#include <chrono>
+#include <cstdint>
+#include <string>
+
 #include "envoy/http/codes.h"
 #include "envoy/http/header_map.h"
 #include "envoy/stats/stats.h"
 
+namespace Envoy {
 namespace Http {
 
 /**
@@ -14,13 +19,14 @@ public:
   /**
    * Charge a simple response stat to an upstream.
    */
-  static void chargeBasicResponseStat(Stats::Store& store, const std::string& prefix,
+  static void chargeBasicResponseStat(Stats::Scope& scope, const std::string& prefix,
                                       Code response_code);
 
   struct ResponseStatInfo {
-    Stats::Store& store_;
+    Stats::Scope& global_scope_;
+    Stats::Scope& cluster_scope_;
     const std::string& prefix_;
-    const HeaderMap& response_headers_;
+    uint64_t response_status_code_;
     bool internal_request_;
     const std::string& request_vhost_name_;
     const std::string& request_vcluster_name_;
@@ -37,7 +43,8 @@ public:
   static void chargeResponseStat(const ResponseStatInfo& info);
 
   struct ResponseTimingInfo {
-    Stats::Store& store_;
+    Stats::Scope& global_scope_;
+    Stats::Scope& cluster_scope_;
     const std::string& prefix_;
     std::chrono::milliseconds response_time_;
     bool upstream_canary_;
@@ -60,12 +67,16 @@ public:
    */
   static const char* toString(Code code);
 
+  static bool is1xx(uint64_t code) { return code >= 100 && code < 200; }
   static bool is2xx(uint64_t code) { return code >= 200 && code < 300; }
   static bool is3xx(uint64_t code) { return code >= 300 && code < 400; }
   static bool is4xx(uint64_t code) { return code >= 400 && code < 500; }
   static bool is5xx(uint64_t code) { return code >= 500 && code < 600; }
 
+  static bool isGatewayError(uint64_t code) { return code >= 502 && code < 505; }
+
   static std::string groupStringForResponseCode(Code response_code);
 };
 
-} // Http
+} // namespace Http
+} // namespace Envoy

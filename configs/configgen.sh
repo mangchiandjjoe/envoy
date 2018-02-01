@@ -1,11 +1,25 @@
 #!/bin/bash
 
-SCRIPT_DIR=`dirname $0`
-BUILD_DIR=$2/configgen
-if [ ! -d $BUILD_DIR/venv ]; then
-  virtualenv $BUILD_DIR/venv
-  $BUILD_DIR/venv/bin/pip install -r $SCRIPT_DIR/requirements.txt
-fi
+set -e
 
-mkdir -p $1
-$BUILD_DIR/venv/bin/python $SCRIPT_DIR/configgen.py $1
+CONFIGGEN="$1"
+shift
+OUT_DIR="$1"
+shift
+
+mkdir -p "$OUT_DIR/certs"
+"$CONFIGGEN" "$OUT_DIR"
+
+for FILE in $*; do
+  case "$FILE" in
+  *.pem)
+    cp "$FILE" "$OUT_DIR/certs"
+    ;;
+  *)
+    cp "$FILE" "$OUT_DIR"
+    ;;
+  esac
+done
+
+# tar is having issues with -C for some reason so just cd into OUT_DIR.
+(cd "$OUT_DIR"; tar -cvf example_configs.tar *.json *.yaml certs/*.pem)

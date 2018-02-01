@@ -1,3 +1,6 @@
+#include <chrono>
+#include <memory>
+
 #include "envoy/event/dispatcher.h"
 
 #include "common/http/filter/buffer_filter.h"
@@ -6,14 +9,19 @@
 
 #include "test/mocks/buffer/mocks.h"
 #include "test/mocks/http/mocks.h"
+#include "test/test_common/printers.h"
 
-using testing::_;
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+
 using testing::DoAll;
 using testing::InSequence;
 using testing::NiceMock;
 using testing::Return;
 using testing::SaveArg;
+using testing::_;
 
+namespace Envoy {
 namespace Http {
 
 class BufferFilterTest : public testing::Test {
@@ -62,33 +70,14 @@ TEST_F(BufferFilterTest, RequestTimeout) {
   TestHeaderMapImpl headers;
   EXPECT_EQ(FilterHeadersStatus::StopIteration, filter_.decodeHeaders(headers, false));
 
-  TestHeaderMapImpl response_headers{{":status", "408"}};
-  EXPECT_CALL(callbacks_, encodeHeaders_(HeaderMapEqualRef(&response_headers), true));
+  TestHeaderMapImpl response_headers{
+      {":status", "408"}, {"content-length", "22"}, {"content-type", "text/plain"}};
+  EXPECT_CALL(callbacks_, encodeHeaders_(HeaderMapEqualRef(&response_headers), false));
+  EXPECT_CALL(callbacks_, encodeData(_, true));
   timer_->callback_();
 
-  callbacks_.reset_callback_();
+  filter_.onDestroy();
   EXPECT_EQ(1U, config_->stats_.rq_timeout_.value());
-}
-
-TEST_F(BufferFilterTest, RequestTooLarge) {
-  InSequence s;
-
-  expectTimerCreate();
-
-  TestHeaderMapImpl headers;
-  EXPECT_EQ(FilterHeadersStatus::StopIteration, filter_.decodeHeaders(headers, false));
-
-  Buffer::OwnedImpl buffered_data("buffered");
-  ON_CALL(callbacks_, decodingBuffer()).WillByDefault(Return(&buffered_data));
-
-  Buffer::OwnedImpl data1("hello");
-  config_->max_request_bytes_ = 1;
-  TestHeaderMapImpl response_headers{{":status", "413"}};
-  EXPECT_CALL(callbacks_, encodeHeaders_(HeaderMapEqualRef(&response_headers), true));
-  EXPECT_EQ(FilterDataStatus::StopIterationAndBuffer, filter_.decodeData(data1, false));
-
-  callbacks_.reset_callback_();
-  EXPECT_EQ(1U, config_->stats_.rq_too_large_.value());
 }
 
 TEST_F(BufferFilterTest, TxResetAfterEndStream) {
@@ -107,7 +96,8 @@ TEST_F(BufferFilterTest, TxResetAfterEndStream) {
 
   // It's possible that the stream will be reset on the TX side even after RX end stream. Mimic
   // that here.
-  callbacks_.reset_callback_();
+  filter_.onDestroy();
 }
 
-} // Http
+} // namespace Http
+} // namespace Envoy

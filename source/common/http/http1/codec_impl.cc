@@ -1,15 +1,20 @@
-#include "codec_impl.h"
+#include "common/http/http1/codec_impl.h"
+
+#include <cstdint>
+#include <string>
 
 #include "envoy/buffer/buffer.h"
 #include "envoy/http/header_map.h"
 #include "envoy/network/connection.h"
 
+#include "common/common/enum_to_int.h"
+#include "common/common/fmt.h"
 #include "common/common/utility.h"
-#include "common/http/codes.h"
 #include "common/http/exception.h"
 #include "common/http/headers.h"
 #include "common/http/utility.h"
 
+namespace Envoy {
 namespace Http {
 namespace Http1 {
 
@@ -32,23 +37,26 @@ void StreamEncoderImpl::encodeHeader(const char* key, uint32_t key_size, const c
 
 void StreamEncoderImpl::encodeHeaders(const HeaderMap& headers, bool end_stream) {
   bool saw_content_length = false;
-  headers.iterate([](const HeaderEntry& header, void* context) -> void {
-    const char* key_to_use = header.key().c_str();
-    uint32_t key_size_to_use = header.key().size();
-    // Translate :authority -> host so that upper layers do not need to deal with this.
-    if (key_size_to_use > 1 && key_to_use[0] == ':' && key_to_use[1] == 'a') {
-      key_to_use = Headers::get().HostLegacy.get().c_str();
-      key_size_to_use = Headers::get().HostLegacy.get().size();
-    }
+  headers.iterate(
+      [](const HeaderEntry& header, void* context) -> HeaderMap::Iterate {
+        const char* key_to_use = header.key().c_str();
+        uint32_t key_size_to_use = header.key().size();
+        // Translate :authority -> host so that upper layers do not need to deal with this.
+        if (key_size_to_use > 1 && key_to_use[0] == ':' && key_to_use[1] == 'a') {
+          key_to_use = Headers::get().HostLegacy.get().c_str();
+          key_size_to_use = Headers::get().HostLegacy.get().size();
+        }
 
-    // Skip all headers starting with ':' that make it here.
-    if (key_to_use[0] == ':') {
-      return;
-    }
+        // Skip all headers starting with ':' that make it here.
+        if (key_to_use[0] == ':') {
+          return HeaderMap::Iterate::Continue;
+        }
 
-    static_cast<StreamEncoderImpl*>(context)
-        ->encodeHeader(key_to_use, key_size_to_use, header.value().c_str(), header.value().size());
-  }, this);
+        static_cast<StreamEncoderImpl*>(context)->encodeHeader(
+            key_to_use, key_size_to_use, header.value().c_str(), header.value().size());
+        return HeaderMap::Iterate::Continue;
+      },
+      this);
 
   if (headers.ContentLength()) {
     saw_content_length = true;
@@ -161,13 +169,17 @@ void ConnectionImpl::reserveBuffer(uint64_t size) {
 
   // TODO PERF: It would be better to allow a split reservation. That will make fill code more
   //            complicated.
-  output_buffer_.reserve(std::max(4096UL, size), &reserved_iovec_, 1);
+  output_buffer_.reserve(std::max<uint64_t>(4096, size), &reserved_iovec_, 1);
   reserved_current_ = static_cast<char*>(reserved_iovec_.mem_);
 }
 
 void StreamEncoderImpl::resetStream(StreamResetReason reason) {
   connection_.onResetStreamBase(reason);
 }
+
+void StreamEncoderImpl::readDisable(bool disable) { connection_.readDisable(disable); }
+
+uint32_t StreamEncoderImpl::bufferLimit() { return connection_.bufferLimit(); }
 
 static const char RESPONSE_PREFIX[] = "HTTP/1.1 ";
 
@@ -230,8 +242,9 @@ http_parser_settings ConnectionImpl::settings_{
       static_cast<ConnectionImpl*>(parser->data)->onHeaderValue(at, length);
       return 0;
     },
-    [](http_parser* parser)
-        -> int { return static_cast<ConnectionImpl*>(parser->data)->onHeadersCompleteBase(); },
+    [](http_parser* parser) -> int {
+      return static_cast<ConnectionImpl*>(parser->data)->onHeadersCompleteBase();
+    },
     [](http_parser* parser, const char* at, size_t length) -> int {
       static_cast<ConnectionImpl*>(parser->data)->onBody(at, length);
       return 0;
@@ -244,36 +257,24 @@ http_parser_settings ConnectionImpl::settings_{
     nullptr  // on_chunk_complete
 };
 
-const ConnectionImpl::ToLowerTable ConnectionImpl::to_lower_table_;
-
-ConnectionImpl::ToLowerTable::ToLowerTable() {
-  for (size_t c = 0; c < 256; c++) {
-    table_[c] = c;
-    if ((c >= 'A') && (c <= 'Z')) {
-      table_[c] |= 0x20;
-    }
-  }
-}
-
-void ConnectionImpl::ToLowerTable::toLowerCase(HeaderString& text) const {
-  char* buffer = text.buffer();
-  uint32_t size = text.size();
-  for (size_t i = 0; i < size; i++) {
-    buffer[i] = table_[static_cast<uint8_t>(buffer[i])];
-  }
+const ToLowerTable& ConnectionImpl::toLowerTable() {
+  static ToLowerTable* table = new ToLowerTable();
+  return *table;
 }
 
 ConnectionImpl::ConnectionImpl(Network::Connection& connection, http_parser_type type)
-    : connection_(connection) {
+    : connection_(connection), output_buffer_([&]() -> void { this->onBelowLowWatermark(); },
+                                              [&]() -> void { this->onAboveHighWatermark(); }) {
+  output_buffer_.setWatermarks(connection.bufferLimit());
   http_parser_init(&parser_, type);
   parser_.data = this;
 }
 
 void ConnectionImpl::completeLastHeader() {
-  conn_log_trace("completed header: key={} value={}", connection_, current_header_field_.c_str(),
-                 current_header_value_.c_str());
+  ENVOY_CONN_LOG(trace, "completed header: key={} value={}", connection_,
+                 current_header_field_.c_str(), current_header_value_.c_str());
   if (!current_header_field_.empty()) {
-    to_lower_table_.toLowerCase(current_header_field_);
+    toLowerTable().toLowerCase(current_header_field_.buffer(), current_header_field_.size());
     current_header_map_->addViaMove(std::move(current_header_field_),
                                     std::move(current_header_value_));
   }
@@ -284,7 +285,7 @@ void ConnectionImpl::completeLastHeader() {
 }
 
 void ConnectionImpl::dispatch(Buffer::Instance& data) {
-  conn_log_trace("parsing {} bytes", connection_, data.length());
+  ENVOY_CONN_LOG(trace, "parsing {} bytes", connection_, data.length());
 
   // Always unpause before dispatch.
   http_parser_pause(&parser_, 0);
@@ -301,7 +302,7 @@ void ConnectionImpl::dispatch(Buffer::Instance& data) {
     dispatchSlice(nullptr, 0);
   }
 
-  conn_log_trace("parsed {} bytes", connection_, total_parsed);
+  ENVOY_CONN_LOG(trace, "parsed {} bytes", connection_, total_parsed);
   data.drain(total_parsed);
 }
 
@@ -340,7 +341,7 @@ void ConnectionImpl::onHeaderValue(const char* data, size_t length) {
 }
 
 int ConnectionImpl::onHeadersCompleteBase() {
-  conn_log_trace("headers complete", connection_);
+  ENVOY_CONN_LOG(trace, "headers complete", connection_);
   completeLastHeader();
   if (!(parser_.http_major == 1 && parser_.http_minor == 1)) {
     // This is not necessarily true, but it's good enough since higher layers only care if this is
@@ -368,8 +369,9 @@ void ConnectionImpl::onResetStreamBase(StreamResetReason reason) {
 }
 
 ServerConnectionImpl::ServerConnectionImpl(Network::Connection& connection,
-                                           ServerConnectionCallbacks& callbacks)
-    : ConnectionImpl(connection, HTTP_REQUEST), callbacks_(callbacks) {}
+                                           ServerConnectionCallbacks& callbacks,
+                                           Http1Settings settings)
+    : ConnectionImpl(connection, HTTP_REQUEST), callbacks_(callbacks), codec_settings_(settings) {}
 
 void ServerConnectionImpl::onEncodeComplete() {
   ASSERT(active_request_);
@@ -381,21 +383,99 @@ void ServerConnectionImpl::onEncodeComplete() {
   }
 }
 
+void ServerConnectionImpl::handlePath(HeaderMapImpl& headers, unsigned int method) {
+  HeaderString path(Headers::get().Path);
+
+  bool is_connect = (method == HTTP_CONNECT);
+
+  // The url is relative or a wildcard when the method is OPTIONS. Nothing to do here.
+  if (active_request_->request_url_.c_str()[0] == '/' ||
+      ((method == HTTP_OPTIONS) && active_request_->request_url_.c_str()[0] == '*')) {
+    headers.addViaMove(std::move(path), std::move(active_request_->request_url_));
+    return;
+  }
+
+  // If absolute_urls and/or connect are not going be handled, copy the url and return.
+  // This forces the behavior to be backwards compatible with the old codec behavior.
+  if (!codec_settings_.allow_absolute_url_) {
+    headers.addViaMove(std::move(path), std::move(active_request_->request_url_));
+    return;
+  }
+
+  if (is_connect) {
+    headers.addViaMove(std::move(path), std::move(active_request_->request_url_));
+    return;
+  }
+
+  struct http_parser_url u;
+  http_parser_url_init(&u);
+  int result = http_parser_parse_url(active_request_->request_url_.buffer(),
+                                     active_request_->request_url_.size(), is_connect, &u);
+
+  if (result != 0) {
+    sendProtocolError();
+    throw CodecProtocolException(
+        "http/1.1 protocol error: invalid url in request line, parsed invalid");
+  } else {
+    if ((u.field_set & (1 << UF_HOST)) == (1 << UF_HOST) &&
+        (u.field_set & (1 << UF_SCHEMA)) == (1 << UF_SCHEMA)) {
+      // RFC7230#5.7
+      // When a proxy receives a request with an absolute-form of
+      // request-target, the proxy MUST ignore the received Host header field
+      // (if any) and instead replace it with the host information of the
+      // request-target. A proxy that forwards such a request MUST generate a
+      // new Host field-value based on the received request-target rather than
+      // forward the received Host field-value.
+
+      uint16_t authority_len = u.field_data[UF_HOST].len;
+
+      if ((u.field_set & (1 << UF_PORT)) == (1 << UF_PORT)) {
+        authority_len = authority_len + u.field_data[UF_PORT].len + 1;
+      }
+
+      // Insert the host header, this will later be converted to :authority
+      std::string new_host(active_request_->request_url_.c_str() + u.field_data[UF_HOST].off,
+                           authority_len);
+
+      headers.insertHost().value(new_host);
+
+      // RFC allows the absolute-uri to not end in /, but the absolute path form
+      // must start with /
+      if ((u.field_set & (1 << UF_PATH)) == (1 << UF_PATH) && u.field_data[UF_PATH].len > 0) {
+        HeaderString new_path;
+        new_path.setCopy(active_request_->request_url_.c_str() + u.field_data[UF_PATH].off,
+                         active_request_->request_url_.size() - u.field_data[UF_PATH].off);
+        headers.addViaMove(std::move(path), std::move(new_path));
+      } else {
+        HeaderString new_path;
+        new_path.setCopy("/", 1);
+        headers.addViaMove(std::move(path), std::move(new_path));
+      }
+
+      active_request_->request_url_.clear();
+      return;
+    }
+    sendProtocolError();
+    throw CodecProtocolException("http/1.1 protocol error: invalid url in request line");
+  }
+}
+
 int ServerConnectionImpl::onHeadersComplete(HeaderMapImplPtr&& headers) {
   // Handle the case where response happens prior to request complete. It's up to upper layer code
   // to disconnect the connection but we shouldn't fire any more events since it doesn't make
   // sense.
   if (active_request_) {
-    HeaderString path(Headers::get().Path);
-    headers->addViaMove(std::move(path), std::move(active_request_->request_url_));
+    const char* method_string = http_method_str(static_cast<http_method>(parser_.method));
+
+    // Currently, CONNECT is not supported, however; http_parser_parse_url needs to know about
+    // CONNECT
+    handlePath(*headers, parser_.method);
     ASSERT(active_request_->request_url_.empty());
 
-    const char* method_string = http_method_str(static_cast<http_method>(parser_.method));
     headers->insertMethod().value(method_string, strlen(method_string));
 
-    // Deal with expect: 100-continue here since a) only HTTP/1.1 has this, b) higher layers are
-    // never going to do anything other than say to continue since we can response before request
-    // complete if necessary.
+    // Deal with expect: 100-continue here since higher layers are never going to do anything other
+    // than say to continue so that we can respond before request complete if necessary.
     if (headers->Expect() &&
         0 == StringUtil::caseInsensitiveCompare(headers->Expect()->value().c_str(),
                                                 Headers::get().ExpectValues._100Continue.c_str())) {
@@ -445,7 +525,7 @@ void ServerConnectionImpl::onUrl(const char* data, size_t length) {
 void ServerConnectionImpl::onBody(const char* data, size_t length) {
   ASSERT(!deferred_end_stream_headers_);
   if (active_request_) {
-    conn_log_trace("body size={}", connection_, length);
+    ENVOY_CONN_LOG(trace, "body size={}", connection_, length);
     Buffer::OwnedImpl buffer(data, length);
     active_request_->request_decoder_->decodeData(buffer, false);
   }
@@ -453,7 +533,7 @@ void ServerConnectionImpl::onBody(const char* data, size_t length) {
 
 void ServerConnectionImpl::onMessageComplete() {
   if (active_request_) {
-    conn_log_trace("message complete", connection_);
+    ENVOY_CONN_LOG(trace, "message complete", connection_);
     Buffer::OwnedImpl buffer;
     active_request_->remote_complete_ = true;
 
@@ -480,15 +560,26 @@ void ServerConnectionImpl::onResetStream(StreamResetReason reason) {
 
 void ServerConnectionImpl::sendProtocolError() {
   // We do this here because we may get a protocol error before we have a logical stream. Higher
-  // layers can only operate on streams, so there is no coherent way to allow them to send a 400
+  // layers can only operate on streams, so there is no coherent way to allow them to send an error
   // "out of band." On one hand this is kind of a hack but on the other hand it normalizes HTTP/1.1
   // to look more like HTTP/2 to higher layers.
   if (!active_request_ || !active_request_->response_encoder_.startedResponse()) {
-    Buffer::OwnedImpl bad_request_response("HTTP/1.1 400 Bad Request\r\n"
-                                           "content-length: 0\r\n"
-                                           "connection: close\r\n\r\n");
+    Buffer::OwnedImpl bad_request_response(
+        fmt::format("HTTP/1.1 {} {}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                    std::to_string(enumToInt(error_code_)), CodeUtility::toString(error_code_)));
 
     connection_.write(bad_request_response);
+  }
+}
+
+void ServerConnectionImpl::onAboveHighWatermark() {
+  if (active_request_) {
+    active_request_->response_encoder_.runHighWatermarkCallbacks();
+  }
+}
+void ServerConnectionImpl::onBelowLowWatermark() {
+  if (active_request_) {
+    active_request_->response_encoder_.runLowWatermarkCallbacks();
   }
 }
 
@@ -508,7 +599,13 @@ StreamEncoder& ClientConnectionImpl::newStream(StreamDecoder& response_decoder) 
   if (resetStreamCalled()) {
     throw CodecClientException("cannot create new streams after calling reset");
   }
-
+  // Streams are responsible for unwinding any outstanding readDisable(true)
+  // calls done on the underlying connection as they are destroyed. As this is
+  // the only place a HTTP/1 stream is destroyed where the Network::Connection is
+  // reused, unwind any outstanding readDisable() calls here.
+  while (!connection_.readEnabled()) {
+    connection_.readDisable(false);
+  }
   request_encoder_.reset(new RequestStreamEncoderImpl(*this));
   pending_responses_.emplace_back(&response_decoder);
   return *request_encoder_;
@@ -573,5 +670,10 @@ void ClientConnectionImpl::onResetStream(StreamResetReason reason) {
   }
 }
 
-} // Http1
-} // Http
+void ClientConnectionImpl::onAboveHighWatermark() { request_encoder_->runHighWatermarkCallbacks(); }
+
+void ClientConnectionImpl::onBelowLowWatermark() { request_encoder_->runLowWatermarkCallbacks(); }
+
+} // namespace Http1
+} // namespace Http
+} // namespace Envoy

@@ -2,27 +2,31 @@
 
 #include "common/event/dispatcher_impl.h"
 
-TEST_F(UdsIntegrationTest, RouterRequestAndResponseWithBodyNoBuffer) {
-  testRouterRequestAndResponseWithBody(makeClientConnection(IntegrationTest::HTTP_PORT),
-                                       Http::CodecClient::Type::HTTP1, 1024, 512, false);
+#include "gtest/gtest.h"
+
+namespace Envoy {
+
+INSTANTIATE_TEST_CASE_P(IpVersions, UdsIntegrationTest,
+                        testing::ValuesIn(TestEnvironment::getIpVersionsForTest()));
+
+TEST_P(UdsIntegrationTest, RouterRequestAndResponseWithBodyNoBuffer) {
+  testRouterRequestAndResponseWithBody(1024, 512, false);
 }
 
-TEST_F(UdsIntegrationTest, RouterHeaderOnlyRequestAndResponse) {
-  testRouterHeaderOnlyRequestAndResponse(makeClientConnection(IntegrationTest::HTTP_PORT),
-                                         Http::CodecClient::Type::HTTP1);
+TEST_P(UdsIntegrationTest, RouterHeaderOnlyRequestAndResponse) {
+  testRouterHeaderOnlyRequestAndResponse(true);
 }
 
-TEST_F(UdsIntegrationTest, RouterUpstreamDisconnectBeforeResponseComplete) {
-  testRouterUpstreamDisconnectBeforeResponseComplete(
-      makeClientConnection(IntegrationTest::HTTP_PORT), Http::CodecClient::Type::HTTP1);
+TEST_P(UdsIntegrationTest, RouterUpstreamDisconnectBeforeResponseComplete) {
+  testRouterUpstreamDisconnectBeforeResponseComplete();
 }
 
-TEST_F(UdsIntegrationTest, RouterDownstreamDisconnectBeforeRequestComplete) {
-  testRouterDownstreamDisconnectBeforeRequestComplete(
-      makeClientConnection(IntegrationTest::HTTP_PORT), Http::CodecClient::Type::HTTP1);
+TEST_P(UdsIntegrationTest, RouterDownstreamDisconnectBeforeRequestComplete) {
+  testRouterDownstreamDisconnectBeforeRequestComplete();
 }
 
-TEST_F(UdsIntegrationTest, RouterDownstreamDisconnectBeforeResponseComplete) {
-  testRouterDownstreamDisconnectBeforeResponseComplete(
-      makeClientConnection(IntegrationTest::HTTP_PORT), Http::CodecClient::Type::HTTP1);
+TEST_P(UdsIntegrationTest, RouterDownstreamDisconnectBeforeResponseComplete) {
+  testRouterDownstreamDisconnectBeforeResponseComplete();
 }
+
+} // namespace Envoy

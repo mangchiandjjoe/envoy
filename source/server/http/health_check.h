@@ -1,22 +1,42 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <string>
+
+#include "envoy/api/v2/filter/http/health_check.pb.h"
 #include "envoy/http/codes.h"
 #include "envoy/http/filter.h"
+#include "envoy/server/filter_config.h"
 
-#include "server/config/network/http_connection_manager.h"
+#include "common/config/well_known_names.h"
 
+namespace Envoy {
 namespace Server {
 namespace Configuration {
 
-class HealthCheckFilterConfig : public HttpFilterConfigFactory {
+class HealthCheckFilterConfig : public NamedHttpFilterConfigFactory {
 public:
-  HttpFilterFactoryCb tryCreateFilterFactory(HttpFilterType type, const std::string& name,
-                                             const Json::Object& config, const std::string&,
-                                             Server::Instance& server) override;
+  HttpFilterFactoryCb createFilterFactory(const Json::Object& json_config, const std::string&,
+                                          FactoryContext& context) override;
+  HttpFilterFactoryCb createFilterFactoryFromProto(const Protobuf::Message& proto_config,
+                                                   const std::string& stats_prefix,
+                                                   FactoryContext& context) override;
+
+  ProtobufTypes::MessagePtr createEmptyConfigProto() override {
+    return ProtobufTypes::MessagePtr{new envoy::api::v2::filter::http::HealthCheck()};
+  }
+
+  std::string name() override { return Config::HttpFilterNames::get().HEALTH_CHECK; }
+
+private:
+  HttpFilterFactoryCb createFilter(const envoy::api::v2::filter::http::HealthCheck& proto_config,
+                                   const std::string& stats_prefix, FactoryContext& context);
 };
 
-} // Configuration
-} // Server
+} // namespace Configuration
+} // namespace Server
 
 /**
  * Shared cache manager used by all instances of a health check filter configuration as well as
@@ -45,17 +65,25 @@ private:
   std::atomic<Http::Code> last_response_code_{};
 };
 
-typedef std::shared_ptr<HealthCheckCacheManager> HealthCheckCacheManagerPtr;
+typedef std::shared_ptr<HealthCheckCacheManager> HealthCheckCacheManagerSharedPtr;
+
+typedef std::map<std::string, double> ClusterMinHealthyPercentages;
+typedef std::shared_ptr<const ClusterMinHealthyPercentages>
+    ClusterMinHealthyPercentagesConstSharedPtr;
 
 /**
  * Health check responder filter.
  */
 class HealthCheckFilter : public Http::StreamFilter {
 public:
-  HealthCheckFilter(Server::Instance& server, bool pass_through_mode,
-                    HealthCheckCacheManagerPtr cache_manager, const std::string& endpoint)
-      : server_(server), pass_through_mode_(pass_through_mode), cache_manager_(cache_manager),
-        endpoint_(endpoint) {}
+  HealthCheckFilter(Server::Configuration::FactoryContext& context, bool pass_through_mode,
+                    HealthCheckCacheManagerSharedPtr cache_manager, const std::string& endpoint,
+                    ClusterMinHealthyPercentagesConstSharedPtr cluster_min_healthy_percentages)
+      : context_(context), pass_through_mode_(pass_through_mode), cache_manager_(cache_manager),
+        endpoint_(endpoint), cluster_min_healthy_percentages_(cluster_min_healthy_percentages) {}
+
+  // Http::StreamFilterBase
+  void onDestroy() override {}
 
   // Http::StreamDecoderFilter
   Http::FilterHeadersStatus decodeHeaders(Http::HeaderMap& headers, bool end_stream) override;
@@ -78,11 +106,13 @@ public:
 private:
   void onComplete();
 
-  Server::Instance& server_;
+  Server::Configuration::FactoryContext& context_;
   Http::StreamDecoderFilterCallbacks* callbacks_{};
   bool handling_{};
   bool health_check_request_{};
   bool pass_through_mode_{};
-  HealthCheckCacheManagerPtr cache_manager_{};
+  HealthCheckCacheManagerSharedPtr cache_manager_;
   const std::string endpoint_;
+  ClusterMinHealthyPercentagesConstSharedPtr cluster_min_healthy_percentages_;
 };
+} // namespace Envoy

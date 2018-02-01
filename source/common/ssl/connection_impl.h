@@ -1,47 +1,25 @@
 #pragma once
 
-#include "context_impl.h"
+#include <cstdint>
+#include <string>
+
+#include "envoy/network/transport_socket.h"
 
 #include "common/network/connection_impl.h"
+#include "common/ssl/context_impl.h"
+#include "common/ssl/ssl_socket.h"
 
+#include "openssl/ssl.h"
+
+namespace Envoy {
 namespace Ssl {
 
-class ConnectionImpl : public Network::ConnectionImpl, public Connection {
+// TODO(lizan): Remove Ssl::ConnectionImpl entirely when factory of TransportSocket is ready.
+class ConnectionImpl : public Network::ConnectionImpl {
 public:
-  enum class InitialState { Client, Server };
-
-  ConnectionImpl(Event::DispatcherImpl& dispatcher, int fd, const std::string& remote_address,
-                 Context& ctx, InitialState state);
-  ~ConnectionImpl();
-
-  // Network::Connection
-  std::string nextProtocol() override;
-  Ssl::Connection* ssl() override { return this; }
-
-  // Ssl::Connection
-  std::string sha256PeerCertificateDigest() override;
-
-private:
-  PostIoAction doHandshake();
-  void drainErrorQueue();
-
-  // Network::ConnectionImpl
-  void closeSocket(uint32_t close_type) override;
-  IoResult doReadFromSocket() override;
-  IoResult doWriteToSocket() override;
-  void onConnected() override;
-
-  ContextImpl& ctx_;
-  SslConPtr ssl_;
-  bool handshake_complete_{};
+  ConnectionImpl(Event::Dispatcher& dispatcher, Network::ConnectionSocketPtr&& socket,
+                 bool connected, Context& ctx, InitialState state);
 };
 
-class ClientConnectionImpl final : public ConnectionImpl, public Network::ClientConnection {
-public:
-  ClientConnectionImpl(Event::DispatcherImpl& dispatcher, Context& ctx, const std::string& url);
-
-  // Network::ClientConnection
-  void connect() override;
-};
-
-} // Ssl
+} // namespace Ssl
+} // namespace Envoy

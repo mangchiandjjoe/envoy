@@ -1,0 +1,3 @@
+FROM ubuntu:16.04
+
+ADD build_release_stripped/envoy /usr/local/bin/envoy

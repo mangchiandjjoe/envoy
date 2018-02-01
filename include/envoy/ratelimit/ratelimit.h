@@ -1,8 +1,15 @@
 #pragma once
 
+#include <chrono>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "envoy/common/optional.h"
 #include "envoy/common/pure.h"
+#include "envoy/tracing/http_tracer.h"
 
+namespace Envoy {
 namespace RateLimit {
 
 /**
@@ -66,11 +73,11 @@ public:
    * @param callbacks supplies the completion callbacks.
    * @param domain specifies the rate limit domain.
    * @param descriptors specifies a list of descriptors to query.
-   * @param request_id propagates the request_id of the current request to the ratelimit service.
+   * @param parent_span source for generating an egress child span as part of the trace.
+   *
    */
   virtual void limit(RequestCallbacks& callbacks, const std::string& domain,
-                     const std::vector<Descriptor>& descriptors,
-                     const std::string& request_id) PURE;
+                     const std::vector<Descriptor>& descriptors, Tracing::Span& parent_span) PURE;
 };
 
 typedef std::unique_ptr<Client> ClientPtr;
@@ -90,4 +97,5 @@ public:
 
 typedef std::unique_ptr<ClientFactory> ClientFactoryPtr;
 
-} // RateLimit
+} // namespace RateLimit
+} // namespace Envoy

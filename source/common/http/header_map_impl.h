@@ -1,11 +1,17 @@
 #pragma once
 
-#include "headers.h"
+#include <array>
+#include <cstdint>
+#include <list>
+#include <memory>
+#include <string>
 
 #include "envoy/http/header_map.h"
 
 #include "common/common/non_copyable.h"
+#include "common/http/headers.h"
 
+namespace Envoy {
 namespace Http {
 
 /**
@@ -48,12 +54,19 @@ public:
   bool operator==(const HeaderMapImpl& rhs) const;
 
   // Http::HeaderMap
-  void addStatic(const LowerCaseString& key, const std::string& value) override;
-  void addStaticKey(const LowerCaseString& key, uint64_t value) override;
-  void addStaticKey(const LowerCaseString& key, const std::string& value) override;
+  void addReference(const LowerCaseString& key, const std::string& value) override;
+  void addReferenceKey(const LowerCaseString& key, uint64_t value) override;
+  void addReferenceKey(const LowerCaseString& key, const std::string& value) override;
+  void addCopy(const LowerCaseString& key, uint64_t value) override;
+  void addCopy(const LowerCaseString& key, const std::string& value) override;
+  void setReference(const LowerCaseString& key, const std::string& value) override;
+  void setReferenceKey(const LowerCaseString& key, const std::string& value) override;
   uint64_t byteSize() const override;
   const HeaderEntry* get(const LowerCaseString& key) const override;
+  HeaderEntry* get(const LowerCaseString& key) override;
   void iterate(ConstIterateCb cb, void* context) const override;
+  void iterateReverse(ConstIterateCb cb, void* context) const override;
+  Lookup lookup(const LowerCaseString& key, const HeaderEntry** entry) const override;
   void remove(const LowerCaseString& key) override;
   size_t size() const override { return headers_.size(); }
 
@@ -70,6 +83,7 @@ protected:
     void value(uint64_t value) override;
     void value(const HeaderEntry& header) override;
     const HeaderString& value() const override { return value_; }
+    HeaderString& value() override { return value_; }
 
     HeaderString key_;
     HeaderString value_;
@@ -100,8 +114,6 @@ protected:
     StaticLookupEntry root_;
   };
 
-  static const StaticLookupTable static_lookup_table_;
-
   struct AllInlineHeaders {
     ALL_INLINE_HEADERS(DEFINE_INLINE_HEADER_STRUCT)
   };
@@ -121,3 +133,4 @@ protected:
 typedef std::unique_ptr<HeaderMapImpl> HeaderMapImplPtr;
 
 } // Http
+} // namespace Envoy

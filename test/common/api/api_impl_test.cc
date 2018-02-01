@@ -1,17 +1,20 @@
+#include <chrono>
+#include <string>
+
 #include "common/api/api_impl.h"
 
+#include "test/test_common/environment.h"
+
+#include "gtest/gtest.h"
+
+namespace Envoy {
 namespace Api {
 
 TEST(ApiImplTest, readFileToEnd) {
   Impl api(std::chrono::milliseconds(10000));
 
-  const std::string file_path = "/tmp/test_api_envoy";
-  unlink(file_path.c_str());
-
-  std::ofstream file(file_path);
   const std::string data = "test read To End\nWith new lines.";
-  file << data;
-  file.close();
+  const std::string file_path = TestEnvironment::writeStringToFileForTest("test_api_envoy", data);
 
   EXPECT_EQ(data, api.fileReadToEnd(file_path));
 }
@@ -23,4 +26,5 @@ TEST(ApiImplTest, fileExists) {
   EXPECT_FALSE(api.fileExists("/dev/blahblahblah"));
 }
 
-} // Api
+} // namespace Api
+} // namespace Envoy

@@ -1,11 +1,16 @@
 #include "mocks.h"
 
+namespace Envoy {
 namespace Grpc {
 
-MockRpcChannelCallbacks::MockRpcChannelCallbacks() {}
-MockRpcChannelCallbacks::~MockRpcChannelCallbacks() {}
+MockAsyncRequest::MockAsyncRequest() {}
+MockAsyncRequest::~MockAsyncRequest() {}
 
-MockRpcChannel::MockRpcChannel() {}
-MockRpcChannel::~MockRpcChannel() {}
+MockAsyncClientFactory::MockAsyncClientFactory() {}
+MockAsyncClientFactory::~MockAsyncClientFactory() {}
 
-} // Grpc
+MockAsyncClientManager::MockAsyncClientManager() {}
+MockAsyncClientManager::~MockAsyncClientManager() {}
+
+} // namespace Grpc
+} // namespace Envoy

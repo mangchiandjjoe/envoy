@@ -1,16 +1,24 @@
 #pragma once
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "envoy/event/file_event.h"
 #include "envoy/event/signal.h"
 #include "envoy/event/timer.h"
 #include "envoy/filesystem/filesystem.h"
 #include "envoy/network/connection.h"
+#include "envoy/network/connection_handler.h"
 #include "envoy/network/dns.h"
-#include "envoy/network/listener.h"
 #include "envoy/network/listen_socket.h"
-#include "envoy/ssl/context.h"
+#include "envoy/network/listener.h"
+#include "envoy/network/transport_socket.h"
 #include "envoy/stats/stats.h"
 
+namespace Envoy {
 namespace Event {
 
 /**
@@ -31,35 +39,52 @@ public:
   virtual void clearDeferredDeleteList() PURE;
 
   /**
+   * Create a server connection.
+   * @param socket supplies an open file descriptor and connection metadata to use for the
+   *        connection. Takes ownership of the socket.
+   * @param transport_socket supplies a transport socket to be used by the connection.
+   * @return Network::ConnectionPtr a server connection that is owned by the caller.
+   */
+  virtual Network::ConnectionPtr
+  createServerConnection(Network::ConnectionSocketPtr&& socket,
+                         Network::TransportSocketPtr&& transport_socket) PURE;
+
+  /**
    * Create a client connection.
-   * @param url supplies the URL to connect to.
+   * @param address supplies the address to connect to.
+   * @param source_address supplies an address to bind to or nullptr if no bind is necessary.
+   * @param transport_socket supplies a transport socket to be used by the connection.
+   * @param options the socket options to be set on the underlying socket before anything is sent
+   *        on the socket.
    * @return Network::ClientConnectionPtr a client connection that is owned by the caller.
    */
-  virtual Network::ClientConnectionPtr createClientConnection(const std::string& url) PURE;
+  virtual Network::ClientConnectionPtr
+  createClientConnection(Network::Address::InstanceConstSharedPtr address,
+                         Network::Address::InstanceConstSharedPtr source_address,
+                         Network::TransportSocketPtr&& transport_socket,
+                         const Network::ConnectionSocket::OptionsSharedPtr& options) PURE;
 
   /**
-   * Create an SSL client connection.
-   * @param ssl_ctx supplies the SSL context to use.
-   * @param url supplies the URL to connect to.
-   * @return Network::ClientConnectionPtr a client connection that is owned by the caller.
+   * Create an async DNS resolver. The resolver should only be used on the thread that runs this
+   * dispatcher.
+   * @param resolvers supplies the addresses of DNS resolvers that this resolver should use. If left
+   * empty, it will not use any specific resolvers, but use defaults (/etc/resolv.conf)
+   * @return Network::DnsResolverSharedPtr that is owned by the caller.
    */
-  virtual Network::ClientConnectionPtr createSslClientConnection(Ssl::ClientContext& ssl_ctx,
-                                                                 const std::string& url) PURE;
-
-  /**
-   * Create an async DNS resolver. Only a single resolver can exist in the process at a time and it
-   * should only be used on the thread that runs this dispatcher.
-   * @return Network::DnsResolverPtr that is owned by the caller.
-   */
-  virtual Network::DnsResolverPtr createDnsResolver() PURE;
+  virtual Network::DnsResolverSharedPtr
+  createDnsResolver(const std::vector<Network::Address::InstanceConstSharedPtr>& resolvers) PURE;
 
   /**
    * Create a file event that will signal when a file is readable or writable. On UNIX systems this
    * can be used for any file like interface (files, sockets, etc.).
    * @param fd supplies the fd to watch.
    * @param cb supplies the callback to fire when the file is ready.
+   * @param trigger specifies whether to edge or level trigger.
+   * @param events supplies a logical OR of FileReadyType events that the file event should
+   *               initially listen on.
    */
-  virtual FileEventPtr createFileEvent(int fd, FileReadyCb cb) PURE;
+  virtual FileEventPtr createFileEvent(int fd, FileReadyCb cb, FileTriggerType trigger,
+                                       uint32_t events) PURE;
 
   /**
    * @return Filesystem::WatcherPtr a filesystem watcher owned by the caller.
@@ -70,28 +95,14 @@ public:
    * Create a listener on a specific port.
    * @param socket supplies the socket to listen on.
    * @param cb supplies the callbacks to invoke for listener events.
-   * @param stats_store supplies the Stats::Store to use.
-   * @param use_proxy_proto whether to use the PROXY Protocol V1
-   * (http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt)
+   * @param bind_to_port controls whether the listener binds to a transport port or not.
+   * @param hand_off_restored_destination_connections controls whether the listener searches for
+   *        another listener after restoring the destination address of a new connection.
    * @return Network::ListenerPtr a new listener that is owned by the caller.
    */
   virtual Network::ListenerPtr createListener(Network::ListenSocket& socket,
-                                              Network::ListenerCallbacks& cb,
-                                              Stats::Store& stats_store, bool use_proxy_proto) PURE;
-
-  /**
-   * Create a listener on a specific port.
-   * @param ssl_ctx supplies the SSL context to use.
-   * @param socket supplies the socket to listen on.
-   * @param cb supplies the callbacks to invoke for listener events.
-   * @param stats_store supplies the Stats::Store to use.
-   * @return Network::ListenerPtr a new listener that is owned by the caller.
-   */
-  virtual Network::ListenerPtr createSslListener(Ssl::ServerContext& ssl_ctx,
-                                                 Network::ListenSocket& socket,
-                                                 Network::ListenerCallbacks& cb,
-                                                 Stats::Store& stats_store,
-                                                 bool use_proxy_proto) PURE;
+                                              Network::ListenerCallbacks& cb, bool bind_to_port,
+                                              bool hand_off_restored_destination_connections) PURE;
 
   /**
    * Allocate a timer. @see Event::Timer for docs on how to use the timer.
@@ -134,8 +145,15 @@ public:
    */
   enum class RunType { Block, NonBlock };
   virtual void run(RunType type) PURE;
+
+  /**
+   * Returns a factory which connections may use for watermark buffer creation.
+   * @return the watermark buffer factory for this dispatcher.
+   */
+  virtual Buffer::WatermarkFactory& getWatermarkFactory() PURE;
 };
 
 typedef std::unique_ptr<Dispatcher> DispatcherPtr;
 
-} // Event
+} // namespace Event
+} // namespace Envoy

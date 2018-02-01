@@ -1,181 +1,193 @@
 #pragma once
 
-#include "envoy/common/optional.h"
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <functional>
+#include <list>
+#include <memory>
+#include <regex>
+#include <string>
+#include <unordered_map>
+
 #include "envoy/common/time.h"
+#include "envoy/config/metrics/v2/stats.pb.h"
+#include "envoy/server/options.h"
 #include "envoy/stats/stats.h"
-#include "envoy/thread/thread.h"
 
 #include "common/common/assert.h"
+#include "common/common/hash.h"
+#include "common/protobuf/protobuf.h"
 
+#include "absl/strings/string_view.h"
+
+namespace Envoy {
 namespace Stats {
+
+class TagExtractorImpl : public TagExtractor {
+public:
+  /**
+   * Creates a tag extractor from the regex provided or looks up a default regex.
+   * @param name name for tag extractor. Used to look up a default tag extractor if regex is empty.
+   * @param regex optional regex expression. Can be specified as an empty string to trigger a
+   * default regex lookup.
+   * @return TagExtractorPtr newly constructed TagExtractor.
+   */
+  static TagExtractorPtr createTagExtractor(const std::string& name, const std::string& regex);
+
+  TagExtractorImpl(const std::string& name, const std::string& regex);
+  std::string name() const override { return name_; }
+  std::string extractTag(const std::string& tag_extracted_name,
+                         std::vector<Tag>& tags) const override;
+
+private:
+  const std::string name_;
+  const std::regex regex_;
+};
+
+class TagProducerImpl : public TagProducer {
+public:
+  TagProducerImpl(const envoy::config::metrics::v2::StatsConfig& config);
+  TagProducerImpl() {}
+
+  /**
+   * Take a metric name and a vector then add proper tags into the vector and
+   * return an extracted metric name.
+   * @param metric_name std::string a name of Stats::Metric (Counter, Gauge, Histogram).
+   * @param tags std::vector a set of Stats::Tag.
+   */
+  std::string produceTags(const std::string& metric_name, std::vector<Tag>& tags) const override;
+
+private:
+  void reserveResources(const envoy::config::metrics::v2::StatsConfig& config);
+  void addDefaultExtractors(const envoy::config::metrics::v2::StatsConfig& config,
+                            std::unordered_set<std::string>& names);
+
+  std::vector<TagExtractorPtr> tag_extractors_;
+  std::vector<Tag> default_tags_;
+};
+
+/**
+ * Common stats utility routines.
+ */
+class Utility {
+public:
+  // ':' is a reserved char in statsd. Do a character replacement to avoid costly inline
+  // translations later.
+  static std::string sanitizeStatsName(const std::string& name);
+};
 
 /**
  * This structure is the backing memory for both CounterImpl and GaugeImpl. It is designed so that
  * it can be allocated from shared memory if needed.
+ *
+ * @note Due to name_ being variable size, sizeof(RawStatData) probably isn't useful. Use
+ * RawStatData::size() instead.
  */
 struct RawStatData {
-  static const size_t MAX_NAME_SIZE = 127;
-
-  RawStatData() { memset(name_, 0, sizeof(name_)); }
-  void initialize(const std::string& name);
-  bool initialized() { return name_[0] != '\0'; }
-  bool matches(const std::string& name);
-
-  std::atomic<uint64_t> value_{0};
-  std::atomic<uint64_t> pending_increment_{0};
-  std::atomic<bool> used_{};
-  char name_[MAX_NAME_SIZE + 1];
-};
-
-/**
- * Counter implementation that wraps a RawStatData.
- */
-class CounterImpl : public Counter {
-public:
-  CounterImpl(RawStatData& data) : data_(data) {}
-
-  // Stats::Counter
-  void add(uint64_t amount) override {
-    data_.value_ += amount;
-    data_.pending_increment_ += amount;
-    data_.used_ = true;
-  }
-
-  void inc() override { add(1); }
-  uint64_t latch() override { return data_.pending_increment_.exchange(0); }
-  std::string name() override { return data_.name_; }
-  void reset() override { data_.value_ = 0; }
-  bool used() override { return data_.used_; }
-  uint64_t value() override { return data_.value_; }
-
-private:
-  RawStatData& data_;
-};
-
-/**
- * Gauge implementation that wraps a RawStatData.
- */
-class GaugeImpl : public Gauge {
-public:
-  GaugeImpl(RawStatData& data) : data_(data) {}
-
-  // Stats::Gauge
-  virtual void add(uint64_t amount) override {
-    data_.value_ += amount;
-    data_.used_ = true;
-  }
-  virtual void dec() override { sub(1); }
-  virtual void inc() override { add(1); }
-  virtual std::string name() { return data_.name_; }
-  virtual void set(uint64_t value) override {
-    data_.value_ = value;
-    data_.used_ = true;
-  }
-  virtual void sub(uint64_t amount) override {
-    ASSERT(data_.value_ >= amount);
-    data_.value_ -= amount;
-    data_.used_ = true;
-  }
-  bool used() override { return data_.used_; }
-  virtual uint64_t value() override { return data_.value_; }
-
-private:
-  RawStatData& data_;
-};
-
-/**
- * Timer implementation for the heap.
- */
-class TimerImpl : public Timer {
-public:
-  TimerImpl(const std::string& name, Store& parent) : name_(name), parent_(parent) {}
-
-  // Stats::Timer
-  TimespanPtr allocateSpan() override { return TimespanPtr{new TimespanImpl(*this)}; }
-  std::string name() override { return name_; }
-
-private:
-  /**
-   * Timespan implementation for the heap.
-   */
-  class TimespanImpl : public Timespan {
-  public:
-    TimespanImpl(TimerImpl& parent) : parent_(parent), start_(std::chrono::system_clock::now()) {}
-
-    // Stats::Timespan
-    void complete() override { complete(parent_.name_); }
-    void complete(const std::string& dynamic_name) override;
-
-  private:
-    TimerImpl& parent_;
-    SystemTime start_;
+  struct Flags {
+    static const uint8_t Used = 0x1;
   };
 
-  std::string name_;
-  Store& parent_;
-};
-
-/**
- * This is a templated class that allows stats to be allocated and then shared in thread local
- * caches to avoid a central lock when dealing with dynamic stats.
- */
-template <class Impl> class StatThreadLocalCache {
-public:
-  typedef std::function<Impl*(const std::string& name)> Allocator;
-
-  StatThreadLocalCache(Thread::BasicLockable& lock, Allocator alloc) : lock_(lock), alloc_(alloc) {}
+  /**
+   * Due to the flexible-array-length of name_, c-style allocation
+   * and initialization are neccessary.
+   */
+  RawStatData() = delete;
+  ~RawStatData() = delete;
 
   /**
-   * Get an allocated stat. It will either by pulled from the thread local cache, found in the
-   * central store and added to the thread local cache, or allocated and added.
+   * Configure static settings. This MUST be called
+   * before any other static or instance methods.
    */
-  Impl& get(const std::string& name) {
-    static thread_local std::unordered_map<std::string, Impl*> cache_;
+  static void configure(Server::Options& options);
 
-    // First see if we already have it in the cache, if so just return it.
-    auto stat = cache_.find(name);
-    if (stat != cache_.end()) {
-      return *stat->second;
-    }
+  /**
+   * Allow tests to re-configure this value after it has been set.
+   * This is unsafe in a non-test context.
+   */
+  static void configureForTestsOnly(Server::Options& options);
 
-    // Now see if it already exists in the central store. If so, we use that.
-    std::unique_lock<Thread::BasicLockable> lock(lock_);
-    Impl* stat_to_cache = nullptr;
-    for (auto& stat : stats_) {
-      if (stat->name() == name) {
-        stat_to_cache = stat.get();
-        break;
-      }
-    }
+  /**
+   * Returns the maximum length of the name of a stat. This length
+   * does not include a trailing NULL-terminator.
+   */
+  static size_t maxNameLength() { return maxObjNameLength() + MAX_STAT_SUFFIX_LENGTH; }
 
-    // If we still don't have it, allocate it.
-    if (!stat_to_cache) {
-      stats_.emplace_back(alloc_(name));
-      stat_to_cache = stats_.back().get();
-    }
-
-    // Cache and return what we found or allocated.
-    cache_[name] = stat_to_cache;
-    return *stat_to_cache;
+  /**
+   * Returns the maximum length of a user supplied object (route/cluster/listener)
+   * name field in a stat. This length does not include a trailing NULL-terminator.
+   */
+  static size_t maxObjNameLength() {
+    return initializeAndGetMutableMaxObjNameLength(DEFAULT_MAX_OBJ_NAME_LENGTH);
   }
 
   /**
-   * Convert the local list into a reference wrapper list.
+   * Returns the maximum length of a stat suffix that Envoy generates (over the user supplied name).
+   * This length does not include a trailing NULL-terminator.
    */
-  template <class T> std::list<std::reference_wrapper<T>> toList() const {
-    std::list<std::reference_wrapper<T>> list;
-    std::unique_lock<Thread::BasicLockable> lock(lock_);
-    for (const std::unique_ptr<Impl>& stat : stats_) {
-      list.push_back(*stat);
-    }
+  static size_t maxStatSuffixLength() { return MAX_STAT_SUFFIX_LENGTH; }
 
-    return list;
+  /**
+   * size in bytes of name_
+   */
+  static size_t nameSize() { return maxNameLength() + 1; }
+
+  /**
+   * Returns the size of this struct, accounting for the length of name_
+   * and padding for alignment. This is required by SharedMemoryHashSet.
+   */
+  static size_t size();
+
+  /**
+   * Initializes this object to have the specified key,
+   * a refcount of 1, and all other values zero. This is required by
+   * SharedMemoryHashSet.
+   */
+  void initialize(absl::string_view key);
+
+  /**
+   * Returns a hash of the key. This is required by SharedMemoryHashSet.
+   */
+  static uint64_t hash(absl::string_view key) { return HashUtil::xxHash64(key); }
+
+  /**
+   * Returns true if object is in use.
+   */
+  bool initialized() { return name_[0] != '\0'; }
+
+  /**
+   * Returns the name as a string_view. This is required by SharedMemoryHashSet.
+   */
+  absl::string_view key() const {
+    return absl::string_view(name_, strnlen(name_, maxNameLength()));
   }
+
+  std::atomic<uint64_t> value_;
+  std::atomic<uint64_t> pending_increment_;
+  std::atomic<uint16_t> flags_;
+  std::atomic<uint16_t> ref_count_;
+  std::atomic<uint32_t> unused_;
+  char name_[];
 
 private:
-  Thread::BasicLockable& lock_;
-  std::list<std::unique_ptr<Impl>> stats_;
-  Allocator alloc_;
+  // The max name length is based on current set of stats.
+  // As of now, the longest stat is
+  // cluster.<cluster_name>.outlier_detection.ejections_consecutive_5xx
+  // which is 52 characters long without the cluster name.
+  // The max stat name length is 127 (default). So, in order to give room
+  // for growth to both the envoy generated stat characters
+  // (e.g., outlier_detection...) and user supplied names (e.g., cluster name),
+  // we set the max user supplied name length to 60, and the max internally
+  // generated stat suffixes to 67 (15 more characters to grow).
+  // If you want to increase the max user supplied name length, use the compiler
+  // option ENVOY_DEFAULT_MAX_OBJ_NAME_LENGTH or the CLI option
+  // max-obj-name-len
+  static const size_t DEFAULT_MAX_OBJ_NAME_LENGTH = 60;
+  static const size_t MAX_STAT_SUFFIX_LENGTH = 67;
+
+  static size_t& initializeAndGetMutableMaxObjNameLength(size_t configured_size);
 };
 
 /**
@@ -187,74 +199,115 @@ public:
 
   /**
    * @return RawStatData* a raw stat data block for a given stat name or nullptr if there is no more
-   *         memory available for stats.
+   *         memory available for stats. The allocator may return a reference counted data location
+   *         by name if one already exists with the same name. This is used for intra-process
+   *         scope swapping as well as inter-process hot restart.
    */
   virtual RawStatData* alloc(const std::string& name) PURE;
+
+  /**
+   * Free a raw stat data block. The allocator should handle reference counting and only truly
+   * free the block if it is no longer needed.
+   */
+  virtual void free(RawStatData& data) PURE;
 };
 
 /**
- * Store implementation with thread local caching.
+ * Implementation of the Metric interface. Virtual inheritance is used because the interfaces that
+ * will inherit from Metric will have other base classes that will also inherit from Metric.
  */
-class ThreadLocalStoreImpl : public Store {
+class MetricImpl : public virtual Metric {
 public:
-  ThreadLocalStoreImpl(Thread::BasicLockable& lock, RawStatDataAllocator& alloc)
-      : alloc_(alloc),
-        counters_(lock, [this](const std::string& name)
-                            -> CounterImpl* { return new CounterImpl(safeAlloc(name)); }),
-        gauges_(lock, [this](const std::string& name)
-                          -> GaugeImpl* { return new GaugeImpl(safeAlloc(name)); }),
-        timers_(lock, [this](const std::string& name) -> TimerImpl* {
-          return new TimerImpl(name, *this);
-        }), num_last_resort_stats_(counter("stats.overflow")) {
-    last_resort_stat_data_.initialize("stats.last_resort_trap");
-  }
+  MetricImpl(const std::string& name, std::string&& tag_extracted_name, std::vector<Tag>&& tags)
+      : name_(name), tag_extracted_name_(std::move(tag_extracted_name)), tags_(std::move(tags)) {}
 
-  // Stats::Store
-  void addSink(Sink& sink) override { timer_sinks_.push_back(sink); }
-  Counter& counter(const std::string& name) override { return counters_.get(name); }
-  std::list<std::reference_wrapper<Counter>> counters() const override {
-    return counters_.toList<Counter>();
-  }
-
-  void deliverHistogramToSinks(const std::string& name, uint64_t value) override {
-    for (Sink& sink : timer_sinks_) {
-      sink.onHistogramComplete(name, value);
-    }
-  }
-
-  void deliverTimingToSinks(const std::string& name, std::chrono::milliseconds ms) {
-    for (Sink& sink : timer_sinks_) {
-      sink.onTimespanComplete(name, ms);
-    }
-  }
-
-  Gauge& gauge(const std::string& name) override { return gauges_.get(name); }
-  std::list<std::reference_wrapper<Gauge>> gauges() const override {
-    return gauges_.toList<Gauge>();
-  }
-  Timer& timer(const std::string& name) override { return timers_.get(name); }
+  const std::string& name() const override { return name_; }
+  const std::string& tagExtractedName() const override { return tag_extracted_name_; }
+  const std::vector<Tag>& tags() const override { return tags_; }
 
 private:
-  RawStatData& safeAlloc(const std::string& name) {
-    RawStatData* data = alloc_.alloc(name);
-    if (!data) {
-      // If we run out of stat space from the allocator (which can happen if for example allocations
-      // are coming from a fixed shared memory region, we need to deal with this case the best we
-      // can.
-      num_last_resort_stats_.inc();
-      return last_resort_stat_data_;
-    } else {
-      return *data;
-    }
+  const std::string name_;
+  const std::string tag_extracted_name_;
+  const std::vector<Tag> tags_;
+};
+
+/**
+ * Counter implementation that wraps a RawStatData.
+ */
+class CounterImpl : public Counter, public MetricImpl {
+public:
+  CounterImpl(RawStatData& data, RawStatDataAllocator& alloc, std::string&& tag_extracted_name,
+              std::vector<Tag>&& tags)
+      : MetricImpl(data.name_, std::move(tag_extracted_name), std::move(tags)), data_(data),
+        alloc_(alloc) {}
+  ~CounterImpl() { alloc_.free(data_); }
+
+  // Stats::Counter
+  void add(uint64_t amount) override {
+    data_.value_ += amount;
+    data_.pending_increment_ += amount;
+    data_.flags_ |= RawStatData::Flags::Used;
   }
 
-  std::list<std::reference_wrapper<Sink>> timer_sinks_;
+  void inc() override { add(1); }
+  uint64_t latch() override { return data_.pending_increment_.exchange(0); }
+  void reset() override { data_.value_ = 0; }
+  bool used() const override { return data_.flags_ & RawStatData::Flags::Used; }
+  uint64_t value() const override { return data_.value_; }
+
+private:
+  RawStatData& data_;
   RawStatDataAllocator& alloc_;
-  StatThreadLocalCache<CounterImpl> counters_;
-  StatThreadLocalCache<GaugeImpl> gauges_;
-  StatThreadLocalCache<TimerImpl> timers_;
-  RawStatData last_resort_stat_data_;
-  Counter& num_last_resort_stats_;
+};
+
+/**
+ * Gauge implementation that wraps a RawStatData.
+ */
+class GaugeImpl : public Gauge, public MetricImpl {
+public:
+  GaugeImpl(RawStatData& data, RawStatDataAllocator& alloc, std::string&& tag_extracted_name,
+            std::vector<Tag>&& tags)
+      : MetricImpl(data.name_, std::move(tag_extracted_name), std::move(tags)), data_(data),
+        alloc_(alloc) {}
+  ~GaugeImpl() { alloc_.free(data_); }
+
+  // Stats::Gauge
+  virtual void add(uint64_t amount) override {
+    data_.value_ += amount;
+    data_.flags_ |= RawStatData::Flags::Used;
+  }
+  virtual void dec() override { sub(1); }
+  virtual void inc() override { add(1); }
+  virtual void set(uint64_t value) override {
+    data_.value_ = value;
+    data_.flags_ |= RawStatData::Flags::Used;
+  }
+  virtual void sub(uint64_t amount) override {
+    ASSERT(data_.value_ >= amount);
+    ASSERT(used());
+    data_.value_ -= amount;
+  }
+  virtual uint64_t value() const override { return data_.value_; }
+  bool used() const override { return data_.flags_ & RawStatData::Flags::Used; }
+
+private:
+  RawStatData& data_;
+  RawStatDataAllocator& alloc_;
+};
+
+/**
+ * Histogram implementation for the heap.
+ */
+class HistogramImpl : public Histogram, public MetricImpl {
+public:
+  HistogramImpl(const std::string& name, Store& parent, std::string&& tag_extracted_name,
+                std::vector<Tag>&& tags)
+      : MetricImpl(name, std::move(tag_extracted_name), std::move(tags)), parent_(parent) {}
+
+  // Stats::Histogram
+  void recordValue(uint64_t value) override { parent_.deliverHistogramToSinks(*this, value); }
+
+  Store& parent_;
 };
 
 /**
@@ -265,9 +318,7 @@ class HeapRawStatDataAllocator : public RawStatDataAllocator {
 public:
   // RawStatDataAllocator
   RawStatData* alloc(const std::string& name) override;
-
-private:
-  std::list<std::unique_ptr<RawStatData>> raw_data_list_;
+  void free(RawStatData& data) override;
 };
 
 /**
@@ -286,21 +337,21 @@ public:
     }
 
     Impl* new_stat = alloc_(name);
-    stats_.emplace(name, std::unique_ptr<Impl>{new_stat});
+    stats_.emplace(name, std::shared_ptr<Impl>{new_stat});
     return *new_stat;
   }
 
-  std::list<std::reference_wrapper<Base>> toList() const {
-    std::list<std::reference_wrapper<Base>> list;
+  std::list<std::shared_ptr<Base>> toList() const {
+    std::list<std::shared_ptr<Base>> list;
     for (auto& stat : stats_) {
-      list.push_back(*stat.second);
+      list.push_back(stat.second);
     }
 
     return list;
   }
 
 private:
-  std::unordered_map<std::string, std::unique_ptr<Impl>> stats_;
+  std::unordered_map<std::string, std::shared_ptr<Impl>> stats_;
   Allocator alloc_;
 };
 
@@ -310,30 +361,58 @@ private:
 class IsolatedStoreImpl : public Store {
 public:
   IsolatedStoreImpl()
-      : counters_([this](const std::string& name)
-                      -> CounterImpl* { return new CounterImpl(*alloc_.alloc(name)); }),
-        gauges_([this](const std::string& name)
-                    -> GaugeImpl* { return new GaugeImpl(*alloc_.alloc(name)); }),
-        timers_([this](const std::string& name)
-                    -> TimerImpl* { return new TimerImpl(name, *this); }) {}
+      : counters_([this](const std::string& name) -> CounterImpl* {
+          return new CounterImpl(*alloc_.alloc(name), alloc_, std::string(name),
+                                 std::vector<Tag>());
+        }),
+        gauges_([this](const std::string& name) -> GaugeImpl* {
+          return new GaugeImpl(*alloc_.alloc(name), alloc_, std::string(name), std::vector<Tag>());
+        }),
+        histograms_([this](const std::string& name) -> HistogramImpl* {
+          return new HistogramImpl(name, *this, std::string(name), std::vector<Tag>());
+        }) {}
+
+  // Stats::Scope
+  Counter& counter(const std::string& name) override { return counters_.get(name); }
+  ScopePtr createScope(const std::string& name) override {
+    return ScopePtr{new ScopeImpl(*this, name)};
+  }
+  void deliverHistogramToSinks(const Histogram&, uint64_t) override {}
+  Gauge& gauge(const std::string& name) override { return gauges_.get(name); }
+  Histogram& histogram(const std::string& name) override {
+    Histogram& histogram = histograms_.get(name);
+    return histogram;
+  }
 
   // Stats::Store
-  void addSink(Sink&) override {}
-  Counter& counter(const std::string& name) override { return counters_.get(name); }
-  void deliverHistogramToSinks(const std::string&, uint64_t) override {}
-  void deliverTimingToSinks(const std::string&, std::chrono::milliseconds) override {}
-  std::list<std::reference_wrapper<Counter>> counters() const override {
-    return counters_.toList();
-  }
-  Gauge& gauge(const std::string& name) override { return gauges_.get(name); }
-  std::list<std::reference_wrapper<Gauge>> gauges() const override { return gauges_.toList(); }
-  Timer& timer(const std::string& name) override { return timers_.get(name); }
+  std::list<CounterSharedPtr> counters() const override { return counters_.toList(); }
+  std::list<GaugeSharedPtr> gauges() const override { return gauges_.toList(); }
 
 private:
+  struct ScopeImpl : public Scope {
+    ScopeImpl(IsolatedStoreImpl& parent, const std::string& prefix)
+        : parent_(parent), prefix_(Utility::sanitizeStatsName(prefix)) {}
+
+    // Stats::Scope
+    ScopePtr createScope(const std::string& name) override {
+      return ScopePtr{new ScopeImpl(parent_, prefix_ + name)};
+    }
+    void deliverHistogramToSinks(const Histogram&, uint64_t) override {}
+    Counter& counter(const std::string& name) override { return parent_.counter(prefix_ + name); }
+    Gauge& gauge(const std::string& name) override { return parent_.gauge(prefix_ + name); }
+    Histogram& histogram(const std::string& name) override {
+      return parent_.histogram(prefix_ + name);
+    }
+
+    IsolatedStoreImpl& parent_;
+    const std::string prefix_;
+  };
+
   HeapRawStatDataAllocator alloc_;
   IsolatedStatsCache<Counter, CounterImpl> counters_;
   IsolatedStatsCache<Gauge, GaugeImpl> gauges_;
-  IsolatedStatsCache<Timer, TimerImpl> timers_;
+  IsolatedStatsCache<Histogram, HistogramImpl> histograms_;
 };
 
-} // Stats
+} // namespace Stats
+} // namespace Envoy

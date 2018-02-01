@@ -1,50 +1,84 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "envoy/api/v2/filter/http/rate_limit.pb.h"
 #include "envoy/http/filter.h"
+#include "envoy/local_info/local_info.h"
 #include "envoy/ratelimit/ratelimit.h"
 #include "envoy/runtime/runtime.h"
+#include "envoy/upstream/cluster_manager.h"
 
+#include "common/common/assert.h"
 #include "common/http/header_map_impl.h"
-#include "common/json/json_loader.h"
 
+namespace Envoy {
 namespace Http {
 namespace RateLimit {
+
+/**
+ * Type of requests the filter should apply to.
+ */
+enum class FilterRequestType { Internal, External, Both };
 
 /**
  * Global configuration for the HTTP rate limit filter.
  */
 class FilterConfig {
 public:
-  FilterConfig(const Json::Object& config, const std::string& local_service_cluster,
-               Stats::Store& stats_store, Runtime::Loader& runtime)
-      : domain_(config.getString("domain")), stage_(config.getInteger("stage", 0)),
-        local_service_cluster_(local_service_cluster), stats_store_(stats_store),
-        runtime_(runtime) {}
+  FilterConfig(const envoy::api::v2::filter::http::RateLimit& config,
+               const LocalInfo::LocalInfo& local_info, Stats::Scope& scope,
+               Runtime::Loader& runtime, Upstream::ClusterManager& cm)
+      : domain_(config.domain()), stage_(static_cast<uint64_t>(config.stage())),
+        request_type_(config.request_type().empty() ? stringToType("both")
+                                                    : stringToType(config.request_type())),
+        local_info_(local_info), scope_(scope), runtime_(runtime), cm_(cm) {}
 
   const std::string& domain() const { return domain_; }
-  const std::string& localServiceCluster() const { return local_service_cluster_; }
-  int64_t stage() const { return stage_; }
+  const LocalInfo::LocalInfo& localInfo() const { return local_info_; }
+  uint64_t stage() const { return stage_; }
   Runtime::Loader& runtime() { return runtime_; }
-  Stats::Store& stats() { return stats_store_; }
+  Stats::Scope& scope() { return scope_; }
+  Upstream::ClusterManager& cm() { return cm_; }
+  FilterRequestType requestType() const { return request_type_; }
 
 private:
+  static FilterRequestType stringToType(const std::string& request_type) {
+    if (request_type == "internal") {
+      return FilterRequestType::Internal;
+    } else if (request_type == "external") {
+      return FilterRequestType::External;
+    } else {
+      ASSERT(request_type == "both");
+      return FilterRequestType::Both;
+    }
+  }
+
   const std::string domain_;
-  int64_t stage_;
-  const std::string local_service_cluster_;
-  Stats::Store& stats_store_;
+  const uint64_t stage_;
+  const FilterRequestType request_type_;
+  const LocalInfo::LocalInfo& local_info_;
+  Stats::Scope& scope_;
   Runtime::Loader& runtime_;
+  Upstream::ClusterManager& cm_;
 };
 
-typedef std::shared_ptr<FilterConfig> FilterConfigPtr;
+typedef std::shared_ptr<FilterConfig> FilterConfigSharedPtr;
 
 /**
  * HTTP rate limit filter. Depending on the route configuration, this filter calls the global
  * rate limiting service before allowing further filter iteration.
  */
-class Filter : public StreamDecoderFilter, public ::RateLimit::RequestCallbacks {
+class Filter : public StreamDecoderFilter, public Envoy::RateLimit::RequestCallbacks {
 public:
-  Filter(FilterConfigPtr config, ::RateLimit::ClientPtr&& client)
+  Filter(FilterConfigSharedPtr config, Envoy::RateLimit::ClientPtr&& client)
       : config_(config), client_(std::move(client)) {}
+
+  // Http::StreamFilterBase
+  void onDestroy() override;
 
   // Http::StreamDecoderFilter
   FilterHeadersStatus decodeHeaders(HeaderMap& headers, bool end_stream) override;
@@ -53,21 +87,25 @@ public:
   void setDecoderFilterCallbacks(StreamDecoderFilterCallbacks& callbacks) override;
 
   // RateLimit::RequestCallbacks
-  void complete(::RateLimit::LimitStatus status) override;
+  void complete(Envoy::RateLimit::LimitStatus status) override;
 
 private:
+  void initiateCall(const HeaderMap& headers);
+  void populateRateLimitDescriptors(const Router::RateLimitPolicy& rate_limit_policy,
+                                    std::vector<Envoy::RateLimit::Descriptor>& descriptors,
+                                    const Router::RouteEntry* route_entry,
+                                    const HeaderMap& headers) const;
+
   enum class State { NotStarted, Calling, Complete, Responded };
 
-  static const Http::HeaderMapPtr TOO_MANY_REQUESTS_HEADER;
-
-  FilterConfigPtr config_;
-  ::RateLimit::ClientPtr client_;
+  FilterConfigSharedPtr config_;
+  Envoy::RateLimit::ClientPtr client_;
   StreamDecoderFilterCallbacks* callbacks_{};
-  bool initiating_call_{};
   State state_{State::NotStarted};
-  std::string cluster_ratelimit_stat_prefix_;
-  std::string cluster_stat_prefix_;
+  Upstream::ClusterInfoConstSharedPtr cluster_;
+  bool initiating_call_{};
 };
 
-} // RateLimit
-} // Http
+} // namespace RateLimit
+} // namespace Http
+} // namespace Envoy

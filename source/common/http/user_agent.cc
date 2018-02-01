@@ -1,22 +1,29 @@
-#include "user_agent.h"
+#include "common/http/user_agent.h"
+
+#include <cstdint>
+#include <string>
 
 #include "envoy/network/connection.h"
 #include "envoy/stats/stats.h"
 
 #include "common/http/headers.h"
 
+namespace Envoy {
 namespace Http {
 
 void UserAgent::completeConnectionLength(Stats::Timespan& span) {
+
+  // Note: stats_ and scope_ are set together, so it's assumed that scope_ will be non-nullptr if
+  // stats_ is.
   if (!stats_) {
     return;
   }
 
-  span.complete(prefix_ + "downstream_cx_length_ms");
+  scope_->histogram(prefix_ + "downstream_cx_length_ms").recordValue(span.getRawDuration().count());
 }
 
 void UserAgent::initializeFromHeaders(const HeaderMap& headers, const std::string& prefix,
-                                      Stats::Store& stat_store) {
+                                      Stats::Scope& scope) {
   // We assume that the user-agent is consistent based on the first request.
   if (type_ != Type::NotInitialized) {
     return;
@@ -37,21 +44,22 @@ void UserAgent::initializeFromHeaders(const HeaderMap& headers, const std::strin
   }
 
   if (type_ != Type::Unknown) {
-    stats_.reset(
-        new UserAgentStats{ALL_USER_AGENTS_STATS(POOL_COUNTER_PREFIX(stat_store, prefix_))});
+    stats_.reset(new UserAgentStats{ALL_USER_AGENTS_STATS(POOL_COUNTER_PREFIX(scope, prefix_))});
     stats_->downstream_cx_total_.inc();
     stats_->downstream_rq_total_.inc();
+    scope_ = &scope;
   }
 }
 
-void UserAgent::onConnectionDestroy(uint32_t events, bool active_streams) {
+void UserAgent::onConnectionDestroy(Network::ConnectionEvent event, bool active_streams) {
   if (!stats_) {
     return;
   }
 
-  if (active_streams && (events & Network::ConnectionEvent::RemoteClose)) {
+  if (active_streams && event == Network::ConnectionEvent::RemoteClose) {
     stats_->downstream_cx_destroy_remote_active_rq_.inc();
   }
 }
 
-} // Http
+} // namespace Http
+} // namespace Envoy

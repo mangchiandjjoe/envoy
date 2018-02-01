@@ -4,6 +4,7 @@
 
 #include "common/common/logger.h"
 
+namespace Envoy {
 namespace Filter {
 
 /**
@@ -22,4 +23,5 @@ private:
   Network::ReadFilterCallbacks* read_callbacks_{};
 };
 
-} // Filter
+} // namespace Filter
+} // namespace Envoy
