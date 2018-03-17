@@ -226,6 +226,7 @@ envoy_cc_library(
         "//source/common/json:config_schemas_lib",
         "//source/common/json:json_validator_lib",
         "@envoy_api//envoy/api/v2:lds_cc",
+        "@envoy_api//envoy/api/v2:eds_cc",
     ],
 )
 

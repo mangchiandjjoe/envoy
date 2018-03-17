@@ -37,8 +37,11 @@ public:
   }
 
   void updateResources(const std::vector<std::string>& resources) override {
+    std::cout << __FILE__ << ":" << __LINE__ << " " << std::endl;
     watch_ = grpc_mux_.subscribe(type_url_, resources, *this);
+    std::cout << __FILE__ << ":" << __LINE__ << " " << std::endl;
     stats_.update_attempt_.inc();
+    std::cout << __FILE__ << ":" << __LINE__ << " " << std::endl;
   }
 
   const std::string versionInfo() const override { return version_info_; }

@@ -15,6 +15,7 @@
 #include "envoy/server/drain_manager.h"
 #include "envoy/server/hot_restart.h"
 #include "envoy/server/listener_manager.h"
+#include "envoy/server/secret_manager.h"
 #include "envoy/server/options.h"
 #include "envoy/ssl/context_manager.h"
 #include "envoy/thread_local/thread_local.h"
@@ -112,6 +113,10 @@ public:
    * @return the server's listener manager.
    */
   virtual ListenerManager& listenerManager() PURE;
+
+
+  virtual SecretManager& secretManager() PURE;
+
 
   /**
    * @return the server's CLI options.

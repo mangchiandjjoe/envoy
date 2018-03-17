@@ -41,6 +41,8 @@ class SdsApi : public Init::Target,
   void onConfigUpdate(const ResourceVector& resources) override;
   void onConfigUpdateFailed(const EnvoyException* e) override;
 
+  std::string resourceName(const ProtobufWkt::Any& resource) override;
+
  private:
   void runInitializeCallbackIfAny();
 

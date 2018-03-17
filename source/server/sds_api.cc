@@ -104,5 +104,10 @@ void SdsApi::runInitializeCallbackIfAny() {
   }
 }
 
+std::string SdsApi::resourceName(const ProtobufWkt::Any& resource) {
+  return MessageUtil::anyConvert<envoy::api::v2::auth::Secret>(resource).name();
+}
+
+
 }  // namespace Server
 }  // namespace Envoy
