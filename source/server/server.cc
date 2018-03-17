@@ -221,6 +221,9 @@ void InstanceImpl::initialize(Options& options,
   listener_manager_.reset(
       new ListenerManagerImpl(*this, listener_component_factory_, worker_factory_));
 
+  // TODO(jaebong)
+  secret_manager_.reset(new SecretManagerImpl(*this));
+
   // The main thread is also registered for thread local updates so that code that does not care
   // whether it runs on the main thread or on workers can still use TLS.
   thread_local_.registerThread(*dispatcher_, true);

@@ -24,6 +24,11 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
+    name = "secret_interface",
+    hdrs = ["secret.h"],
+)
+
+envoy_cc_library(
     name = "context_manager_interface",
     hdrs = ["context_manager.h"],
     deps = [

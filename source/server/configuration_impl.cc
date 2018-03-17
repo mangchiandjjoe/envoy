@@ -61,6 +61,18 @@ void MainImpl::initialize(const envoy::config::bootstrap::v2::Bootstrap& bootstr
                               server.localInfo(), server.stats(), server.listenerManager()));
   }
 
+  if (bootstrap.dynamic_resources().has_sds_config()) {
+    sds_api_.reset(new SdsApi(
+        bootstrap.dynamic_resources().sds_config(),
+        *cluster_manager_,
+        server.dispatcher(),
+        server.random(),
+        server.initManager(),
+        server.localInfo(),
+        server.stats(),
+        server.secretManager()));
+  }
+
   stats_flush_interval_ =
       std::chrono::milliseconds(PROTOBUF_GET_MS_OR_DEFAULT(bootstrap, stats_flush_interval, 5000));
 

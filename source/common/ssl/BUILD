@@ -25,6 +25,22 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
+    name = "secret_impl_lib",
+    srcs = ["secret_impl.cc"],
+    hdrs = ["secret_impl.h"],
+    external_deps = ["ssl"],
+    deps = [
+        ":context_config_lib",
+        ":context_lib",
+        "//include/envoy/ssl:secret_interface",
+        "//source/common/common:assert_lib",
+        "//source/common/common:empty_string",
+        "//source/common/common:logger_lib",
+        "//source/common/http:headers_lib",
+    ],
+)
+
+envoy_cc_library(
     name = "context_config_lib",
     srcs = ["context_config_impl.cc"],
     hdrs = ["context_config_impl.h"],

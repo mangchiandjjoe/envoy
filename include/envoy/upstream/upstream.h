@@ -548,5 +548,17 @@ public:
 
 typedef std::shared_ptr<Cluster> ClusterSharedPtr;
 
+
+/**
+ * TODO(jaebong) implement Secret class
+ */
+class Secret {
+ public:
+   virtual ~Secret() {}
+};
+
+typedef std::shared_ptr<Secret> SecretSharedPtr;
+
+
 } // namespace Upstream
 } // namespace Envoy

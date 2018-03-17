@@ -71,6 +71,7 @@ envoy_cc_library(
         ":drain_manager_interface",
         ":hot_restart_interface",
         ":listener_manager_interface",
+        ":secret_manager_interface",
         ":options_interface",
         "//include/envoy/access_log:access_log_interface",
         "//include/envoy/api:api_interface",
@@ -132,6 +133,14 @@ envoy_cc_library(
         "//source/common/protobuf",
         "@envoy_api//envoy/api/v2/core:base_cc",
     ],
+)
+
+envoy_cc_library(
+    name = "secret_manager_interface",
+    hdrs = ["secret_manager.h"],
+    deps = [
+        "//include/envoy/ssl:secret_interface",
+    ]
 )
 
 envoy_cc_library(
