@@ -73,7 +73,6 @@ void SdsApi::onConfigUpdate(const ResourceVector& resources) {
   for (const auto& secret : resources) {
     const std::string secret_name = secret.name();
 
-    ENVOY_LOG(info, "*** {}", secret_name);
     secrets_to_remove.erase(secret_name);
     if (secret_manager_.addOrUpdateSecret(secret)) {
       ENVOY_LOG(info, "sds: add/update secret '{}'", secret_name);

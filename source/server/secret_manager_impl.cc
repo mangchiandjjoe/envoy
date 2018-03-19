@@ -18,30 +18,20 @@ namespace Envoy {
 namespace Server {
 
 SecretManagerImpl::SecretManagerImpl(Instance& server)
-    : server_(server),
-      shared_(),
-      reader_queue_(),
-      writer_queue_(),
-      active_readers_(0),
-      waiting_writers_(0),
-      active_writers_(0) {
+    : server_(server) {
 
 }
 
 bool SecretManagerImpl::addOrUpdateSecret(
     const envoy::api::v2::auth::Secret& config) {
-
-//  readLock();
-//  writeLock();
-  std::cout << __FILE__ << ":" << __LINE__ << " " << std::endl;
+  // read/write lock
+  std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
 
   if (config.has_tls_certificate()) {
     std::string certificate_chain = readDataSource(
         config.tls_certificate().certificate_chain(), true);
-    std::cout << __FILE__ << ":" << __LINE__ << " " << certificate_chain << std::endl;
     std::string private_key = readDataSource(
         config.tls_certificate().private_key(), true);
-    std::cout << __FILE__ << ":" << __LINE__ << " " << private_key << std::endl;
 
     secrets_[config.name()] = std::make_shared<Ssl::SecretImpl>(
         Ssl::SecretImpl(certificate_chain, private_key));
@@ -51,14 +41,12 @@ bool SecretManagerImpl::addOrUpdateSecret(
     return false;
   }
 
-//  writeUnlock();
-//  readUnlock();
-
   return true;
 }
 
 SecretManager::SecretInfoMap SecretManagerImpl::secrets() {
-//  readLock();
+  // read lock
+  std::shared_lock < std::shared_timed_mutex > rhs(mutex_);
 
   SecretManager::SecretInfoMap ret;
 
@@ -66,34 +54,28 @@ SecretManager::SecretInfoMap SecretManagerImpl::secrets() {
     ret[secret.first] = secret.second;
   }
 
-  //readUnlock();
-
   return ret;
 }
 
 bool SecretManagerImpl::removeSecret(const std::string& name) {
-//  readLock();
-//  writeLock();
+  // read/write lock
+  std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
 
   if (secrets_.find(name) != secrets_.end()) {
     secrets_.erase(name);
   }
-
-//  writeUnlock();
-//  readUnlock();
 
   return false;
 }
 
 std::shared_ptr<Ssl::Secret> SecretManagerImpl::getSecret(
     const std::string& name) {
-//  readLock();
+  // read lock
+  std::shared_lock < std::shared_timed_mutex > rhs(mutex_);
 
   if (secrets_.find(name) != secrets_.end()) {
     return secrets_[name];
   }
-
-  //readUnlock();
 
   return nullptr;
 }
@@ -122,44 +104,6 @@ const std::string SecretManagerImpl::getDataSourcePath(
   return
       source.specifier_case() == envoy::api::v2::core::DataSource::kFilename ?
           source.filename() : "";
-}
-
-void SecretManagerImpl::readLock() {
-  std::unique_lock<std::mutex> lk(shared_);
-  while (waiting_writers_ != 0) {
-    reader_queue_.wait(lk);
-  }
-  ++active_readers_;
-  lk.unlock();
-}
-
-void SecretManagerImpl::readUnlock() {
-  std::unique_lock<std::mutex> lk(shared_);
-  --active_readers_;
-  lk.unlock();
-  writer_queue_.notify_one();
-}
-
-void SecretManagerImpl::writeLock() {
-  std::unique_lock<std::mutex> lk(shared_);
-  ++waiting_writers_;
-  while (active_readers_ != 0 || active_writers_ != 0) {
-    writer_queue_.wait(lk);
-  }
-  ++active_writers_;
-  lk.unlock();
-}
-
-void SecretManagerImpl::writeUnlock() {
-  std::unique_lock<std::mutex> lk(shared_);
-  --waiting_writers_;
-  --active_writers_;
-  if (waiting_writers_ > 0) {
-    writer_queue_.notify_one();
-  } else {
-    reader_queue_.notify_all();
-  }
-  lk.unlock();
 }
 
 }  // namespace Upstream

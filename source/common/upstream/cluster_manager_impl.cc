@@ -215,12 +215,16 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
         *Protobuf::DescriptorPool::generated_pool()->FindMethodByName(
             "envoy.service.discovery.v2.AggregatedDiscoveryService.StreamAggregatedResources")));
   } else   if (bootstrap.dynamic_resources().has_sds_config()) {
-    ENVOY_LOG(info, "***");
-    ads_mux_.reset(new Config::GrpcMuxImpl(
-        bootstrap.node(),
-        Config::Utility::factoryForApiConfigSource(*async_client_manager_, bootstrap.dynamic_resources().sds_config().api_config_source(), stats)->create(),
-        main_thread_dispatcher,
-        *Protobuf::DescriptorPool::generated_pool()->FindMethodByName("envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets")));
+    ads_mux_.reset(
+        new Config::GrpcMuxImpl(
+            bootstrap.node(),
+            Config::Utility::factoryForApiConfigSource(
+                *async_client_manager_,
+                bootstrap.dynamic_resources().sds_config().api_config_source(),
+                stats)->create(),
+            main_thread_dispatcher,
+            *Protobuf::DescriptorPool::generated_pool()->FindMethodByName(
+                "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets")));
   } else {
     ads_mux_.reset(new Config::NullGrpcMuxImpl());
   }

@@ -104,7 +104,7 @@ void SdsSubscription::onFetchComplete() {
 }
 
 void SdsSubscription::onFetchFailure(const EnvoyException* e) {
-  ENVOY_LOG(debug, "sds: fetch failure");
+  ENVOY_LOG(info, "sds: fetch failure");
   callbacks_->onConfigUpdateFailed(e);
   stats_.update_failure_.inc();
   if (e) {

@@ -1,6 +1,7 @@
 #pragma once
 
-#include <condition_variable>
+#include <mutex>
+#include <shared_mutex>
 
 #include "envoy/server/secret_manager.h"
 #include "envoy/server/instance.h"
@@ -10,6 +11,7 @@
 
 namespace Envoy {
 namespace Server {
+
 
 class SecretManagerImpl : public SecretManager {
  public:
@@ -33,22 +35,12 @@ class SecretManagerImpl : public SecretManager {
   const std::string getDataSourcePath(
       const envoy::api::v2::core::DataSource& source);
 
-  void readLock();
-  void readUnlock();
-  void writeLock();
-  void writeUnlock();
-
  private:
   Instance& server_;
   SecretInfoMap secrets_;
 
  private:
-  std::mutex shared_;
-  std::condition_variable reader_queue_;
-  std::condition_variable writer_queue_;
-  int active_readers_;
-  int waiting_writers_;
-  int active_writers_;
+  mutable std::shared_timed_mutex mutex_;
 };
 
 }  // namespace Server
