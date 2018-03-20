@@ -43,7 +43,6 @@ SdsSubscription::SdsSubscription(
 }
 
 void SdsSubscription::createRequest(Http::Message& request) {
-  ENVOY_LOG(info, "***");
   ENVOY_LOG(debug, "sds: starting request");
 
   stats_.update_attempt_.inc();

@@ -167,6 +167,7 @@ Utility::factoryForApiConfigSource(Grpc::AsyncClientManager& async_client_manage
                                    Stats::Scope& scope) {
   ASSERT(api_config_source.api_type() == envoy::api::v2::core::ApiConfigSource::GRPC);
   envoy::api::v2::core::GrpcService grpc_service;
+
   if (api_config_source.api_type() == envoy::api::v2::core::ApiConfigSource::GRPC) {
     // TODO(jaebong) is this a bug?????
     //  if (api_config_source.cluster_names().empty()) {

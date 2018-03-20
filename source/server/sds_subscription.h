@@ -37,15 +37,10 @@ class SdsSubscription : public Http::RestApiFetcher,
   void start(const std::vector<std::string>& resources, Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret>& callbacks) override {
     // We can only handle a single cluster here, it's a design error to ever use this type of
     // Subscription with more than a single cluster.
-    ENVOY_LOG(info, "***");
     ASSERT(resources.size() == 1);
-    ENVOY_LOG(info, "***");
     cluster_name_ = resources[0];
-    ENVOY_LOG(info, "***");
     callbacks_ = &callbacks;
-    ENVOY_LOG(info, "***");
     RestApiFetcher::initialize();
-    ENVOY_LOG(info, "***");
   }
 
   void updateResources(const std::vector<std::string>& resources) override {
