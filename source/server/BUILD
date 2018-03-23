@@ -200,6 +200,7 @@ envoy_cc_library(
         ":sds_subscription_lib",
         "//include/envoy/config:subscription_interface",
         "//include/envoy/ssl:secret_interface",
+        "//include/envoy/server:instance_interface",
         "//include/envoy/init:init_interface",
         "//include/envoy/server:listener_manager_interface",
         "//include/envoy/server:secret_manager_interface",

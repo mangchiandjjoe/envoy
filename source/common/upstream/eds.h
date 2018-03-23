@@ -21,7 +21,7 @@ public:
                  const LocalInfo::LocalInfo& local_info, ClusterManager& cm,
                  Event::Dispatcher& dispatcher, Runtime::RandomGenerator& random,
                  bool added_via_api,
-                 const Server::SecretManager& secret_manager);
+                 Server::SecretManager& secret_manager);
 
   const std::string versionInfo() const { return subscription_->versionInfo(); }
 

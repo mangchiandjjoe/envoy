@@ -27,13 +27,8 @@ SecretManagerImpl::SecretManagerImpl(
 
 bool SecretManagerImpl::registerSdsConfigSource(const envoy::api::v2::core::ConfigSource& sds_config) {
   std::unique_ptr<SdsApi> sds_api(new SdsApi(
+      server_,
       sds_config,
-      server_.clusterManager(),
-      server_.dispatcher(),
-      server_.random(),
-      server_.initManager(),
-      server_.localInfo(),
-      server_.stats(),
       *this));
 
   sds_apis_.push_back(std::move(sds_api));

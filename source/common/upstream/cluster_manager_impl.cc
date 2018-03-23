@@ -292,7 +292,6 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
   init_helper_.onStaticLoadComplete();
 
   ads_mux_->start();
-  sds_mux_->start();
 
   if (cm_config.has_load_stats_config()) {
     const auto& load_stats_config = cm_config.load_stats_config();

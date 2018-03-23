@@ -8,6 +8,7 @@
 #include "envoy/init/init.h"
 #include "envoy/server/listener_manager.h"
 #include "envoy/server/secret_manager.h"
+#include "envoy/server/instance.h"
 
 #include "common/common/logger.h"
 
@@ -22,11 +23,8 @@ class SdsApi : public Init::Target,
                       Logger::Loggable<Logger::Id::upstream> {
 
  public:
-  SdsApi(const envoy::api::v2::core::ConfigSource& sds_config,
-         Upstream::ClusterManager& cm, Event::Dispatcher& dispatcher,
-         Runtime::RandomGenerator& random, Init::Manager& init_manager,
-         const LocalInfo::LocalInfo& local_info, Stats::Scope& scope,
-         Envoy::Server::SecretManager& sm);
+  SdsApi(Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
+         Envoy::Server::SecretManager& secret_manager);
 
   virtual ~SdsApi() {
   }
@@ -54,18 +52,21 @@ class SdsApi : public Init::Target,
   void onConfigUpdate(const ResourceVector& resources) override;
   void onConfigUpdateFailed(const EnvoyException* e) override;
   std::string resourceName(const ProtobufWkt::Any& resource) override {
-    return MessageUtil::anyConvert<envoy::api::v2::Listener>(resource).name();
+    return MessageUtil::anyConvert<envoy::api::v2::auth::Secret>(resource).name();
   }
 
  private:
   void runInitializeCallbackIfAny();
 
  private:
+  Instance& server_;
+  const envoy::api::v2::core::ConfigSource sds_config_;
+  Envoy::Server::SecretManager& secret_manager_;
+
+
   std::unique_ptr<Config::Subscription<envoy::api::v2::auth::Secret>> subscription_;
-  SecretManager& secret_manager_;
-  Stats::ScopePtr scope_;
-  Upstream::ClusterManager& cm_;
   std::function<void()> initialize_callback_;
+
 
  private:
   // tls_certificate

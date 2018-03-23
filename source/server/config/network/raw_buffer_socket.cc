@@ -11,13 +11,13 @@ namespace Configuration {
 Network::TransportSocketFactoryPtr
 UpstreamRawBufferSocketFactory::createTransportSocketFactory(const Protobuf::Message&,
                                                              TransportSocketFactoryContext&,
-                                                             const Server::SecretManager&) {
+                                                             Server::SecretManager&) {
   return std::make_unique<Network::RawBufferSocketFactory>();
 }
 
 Network::TransportSocketFactoryPtr DownstreamRawBufferSocketFactory::createTransportSocketFactory(
     const std::string&, const std::vector<std::string>&, bool, const Protobuf::Message&,
-    TransportSocketFactoryContext&, const Server::SecretManager&) {
+    TransportSocketFactoryContext&, Server::SecretManager&) {
   return std::make_unique<Network::RawBufferSocketFactory>();
 }
 

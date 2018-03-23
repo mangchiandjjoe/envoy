@@ -39,7 +39,7 @@ public:
                             Ssl::ContextManager& ssl_context_manager,
                             Event::Dispatcher& main_thread_dispatcher,
                             const LocalInfo::LocalInfo& local_info,
-                            const Server::SecretManager& secret_manager)
+                            Server::SecretManager& secret_manager)
       : main_thread_dispatcher_(main_thread_dispatcher), runtime_(runtime), stats_(stats),
         tls_(tls), random_(random), dns_resolver_(dns_resolver),
         ssl_context_manager_(ssl_context_manager), local_info_(local_info),
@@ -73,7 +73,7 @@ private:
   Network::DnsResolverSharedPtr dns_resolver_;
   Ssl::ContextManager& ssl_context_manager_;
   const LocalInfo::LocalInfo& local_info_;
-  const Server::SecretManager& secret_manager_;
+  Server::SecretManager& secret_manager_;
 };
 
 /**

@@ -26,7 +26,7 @@ public:
   Network::TransportSocketFactoryPtr
   createTransportSocketFactory(const Protobuf::Message& config,
                                TransportSocketFactoryContext& context,
-                               const Server::SecretManager& secret_manager) override;
+                               Server::SecretManager& secret_manager) override;
   ProtobufTypes::MessagePtr createEmptyConfigProto() override;
 };
 
@@ -38,7 +38,7 @@ public:
                                const std::vector<std::string>& server_names,
                                bool skip_context_update, const Protobuf::Message& config,
                                TransportSocketFactoryContext& context,
-                               const Server::SecretManager& secret_manager) override;
+                               Server::SecretManager& secret_manager) override;
   ProtobufTypes::MessagePtr createEmptyConfigProto() override;
 };
 

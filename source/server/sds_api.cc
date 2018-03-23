@@ -19,38 +19,45 @@
 namespace Envoy {
 namespace Server {
 
-SdsApi::SdsApi(const envoy::api::v2::core::ConfigSource& sds_config,
-               Upstream::ClusterManager& cm, Event::Dispatcher& dispatcher,
-               Runtime::RandomGenerator& random, Init::Manager& init_manager,
-               const LocalInfo::LocalInfo& local_info, Stats::Scope& scope,
-               Envoy::Server::SecretManager& sm)
-    : secret_manager_(sm),
-      scope_(scope.createScope("secret_manager.sds.")),
-      cm_(cm) {
+SdsApi::SdsApi(Instance& server,
+               const envoy::api::v2::core::ConfigSource& sds_config,
+               Envoy::Server::SecretManager& secret_manager)
+    : server_(server),
+      sds_config_([&sds_config] {
+        envoy::api::v2::core::ConfigSource cfg;
+        cfg.CopyFrom(sds_config);
+        return cfg;
+      }()),
+      secret_manager_(secret_manager) {
 
-  subscription_ =
-      Envoy::Config::SubscriptionFactory::subscriptionFromConfigSource<envoy::api::v2::auth::Secret>(
-          sds_config,
-          local_info.node(),
-          dispatcher,
-          cm,
-          random,
-          *scope_,
-          [this, &sds_config, &cm, &dispatcher, &random,
-          &local_info]() -> Config::Subscription<envoy::api::v2::auth::Secret>* {
-            return new SdsSubscription(Config::Utility::generateStats(*scope_), sds_config, cm,
-                dispatcher, random, local_info);
-          },
-          "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets",
-          "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets");
-
-  Config::Utility::checkLocalInfo("sds", local_info);
-
-  init_manager.registerTarget(*this);
+  server_.initManager().registerTarget(*this);
 }
 
 void SdsApi::initialize(std::function<void()> callback) {
   initialize_callback_ = callback;
+
+  subscription_ =
+      Envoy::Config::SubscriptionFactory::subscriptionFromConfigSource<
+        envoy::api::v2::auth::Secret>(
+          sds_config_,
+          server_.localInfo().node(),
+          server_.dispatcher(),
+          server_.clusterManager(),
+          server_.random(),
+          server_.stats(),
+          [this]() -> Config::Subscription<envoy::api::v2::auth::Secret>* {
+            return new SdsSubscription(
+                Config::Utility::generateStats(this->server_.stats()),
+                this->sds_config_,
+                this->server_.clusterManager(),
+                this->server_.dispatcher(),
+                this->server_.random(),
+                this->server_.localInfo());
+          },
+          "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets",
+          "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets");
+
+  Config::Utility::checkLocalInfo("sds", server_.localInfo());
   subscription_->start({}, *this);
 }
 
@@ -97,7 +104,6 @@ void SdsApi::runInitializeCallbackIfAny() {
     initialize_callback_ = nullptr;
   }
 }
-
 
 }  // namespace Server
 }  // namespace Envoy

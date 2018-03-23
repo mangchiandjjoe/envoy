@@ -22,7 +22,7 @@ public:
                                   Ssl::ContextManager& ssl_context_manager,
                                   Event::Dispatcher& main_thread_dispatcher,
                                   const LocalInfo::LocalInfo& local_info,
-                                  const Server::SecretManager& secret_manager);
+                                  Server::SecretManager& secret_manager);
 
   ClusterManagerPtr
   clusterManagerFromProto(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,

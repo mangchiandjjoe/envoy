@@ -23,7 +23,7 @@ LogicalDnsCluster::LogicalDnsCluster(const envoy::api::v2::Cluster& cluster,
                                      Network::DnsResolverSharedPtr dns_resolver,
                                      ThreadLocal::SlotAllocator& tls, ClusterManager& cm,
                                      Event::Dispatcher& dispatcher, bool added_via_api,
-                                     const Server::SecretManager& secret_manager)
+                                     Server::SecretManager& secret_manager)
     : ClusterImplBase(cluster, cm.sourceAddress(), runtime, stats, ssl_context_manager,
                       added_via_api, secret_manager),
       dns_resolver_(dns_resolver),

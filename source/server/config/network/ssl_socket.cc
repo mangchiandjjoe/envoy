@@ -17,7 +17,7 @@ namespace Configuration {
 Network::TransportSocketFactoryPtr
 UpstreamSslSocketFactory::createTransportSocketFactory(const Protobuf::Message& message,
                                                        TransportSocketFactoryContext& context,
-                                                       const Server::SecretManager& secret_manager) {
+                                                       Server::SecretManager& secret_manager) {
   return std::make_unique<Ssl::ClientSslSocketFactory>(
       Ssl::ClientContextConfigImpl(MessageUtil::downcastAndValidate<const envoy::api::v2::auth::UpstreamTlsContext&>(message), secret_manager),
       context.sslContextManager(),
@@ -37,7 +37,7 @@ Network::TransportSocketFactoryPtr DownstreamSslSocketFactory::createTransportSo
     bool skip_context_update,
     const Protobuf::Message& message,
     TransportSocketFactoryContext& context,
-    const Server::SecretManager& secret_manager) {
+    Server::SecretManager& secret_manager) {
 
   return std::make_unique<Ssl::ServerSslSocketFactory>(
       Ssl::ServerContextConfigImpl(

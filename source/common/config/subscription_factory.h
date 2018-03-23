@@ -55,6 +55,7 @@ public:
 
     case envoy::api::v2::core::ConfigSource::kApiConfigSource: {
       const envoy::api::v2::core::ApiConfigSource& api_config_source = config.api_config_source();
+
       Utility::checkApiConfigSourceSubscriptionBackingCluster(cm.clusters(), api_config_source);
       const std::string& cluster_name = api_config_source.cluster_names()[0];
       switch (api_config_source.api_type()) {

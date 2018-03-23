@@ -67,7 +67,7 @@ public:
    */
   virtual Network::TransportSocketFactoryPtr
   createTransportSocketFactory(const Protobuf::Message& config,
-                               TransportSocketFactoryContext& context, const Server::SecretManager& secret_manager) PURE;
+                               TransportSocketFactoryContext& context, Server::SecretManager& secret_manager) PURE;
 };
 
 /**
@@ -99,7 +99,7 @@ public:
   createTransportSocketFactory(const std::string& listener_name,
                                const std::vector<std::string>& server_names,
                                bool skip_ssl_context_update, const Protobuf::Message& config,
-                               TransportSocketFactoryContext& context, const Server::SecretManager& secret_manager) PURE;
+                               TransportSocketFactoryContext& context, Server::SecretManager& secret_manager) PURE;
 };
 
 } // namespace Configuration

@@ -22,7 +22,7 @@ EdsClusterImpl::EdsClusterImpl(const envoy::api::v2::Cluster& cluster, Runtime::
                                const LocalInfo::LocalInfo& local_info, ClusterManager& cm,
                                Event::Dispatcher& dispatcher, Runtime::RandomGenerator& random,
                                bool added_via_api,
-                               const Server::SecretManager& secret_manager)
+                               Server::SecretManager& secret_manager)
     : BaseDynamicClusterImpl(cluster, cm.sourceAddress(), runtime, stats, ssl_context_manager,
                              added_via_api, secret_manager),
       cm_(cm), local_info_(local_info),
