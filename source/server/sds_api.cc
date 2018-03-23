@@ -25,12 +25,11 @@ SdsApi::SdsApi(const envoy::api::v2::core::ConfigSource& sds_config,
                const LocalInfo::LocalInfo& local_info, Stats::Scope& scope,
                Envoy::Server::SecretManager& sm)
     : secret_manager_(sm),
-      scope_(scope.createScope("secret_manager.lds.")),
+      scope_(scope.createScope("secret_manager.sds.")),
       cm_(cm) {
 
   subscription_ =
-      Envoy::Config::SubscriptionFactory::subscriptionFromConfigSource<
-          envoy::api::v2::auth::Secret>(
+      Envoy::Config::SubscriptionFactory::subscriptionFromConfigSource<envoy::api::v2::auth::Secret>(
           sds_config,
           local_info.node(),
           dispatcher,
@@ -46,6 +45,7 @@ SdsApi::SdsApi(const envoy::api::v2::core::ConfigSource& sds_config,
           "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets");
 
   Config::Utility::checkLocalInfo("sds", local_info);
+
   init_manager.registerTarget(*this);
 }
 
@@ -55,11 +55,6 @@ void SdsApi::initialize(std::function<void()> callback) {
 }
 
 void SdsApi::onConfigUpdate(const ResourceVector& resources) {
-  cm_.adsMux().pause(Config::TypeUrl::get().RouteConfiguration);
-
-  Cleanup sds_resume(
-      [this] {cm_.adsMux().resume(Config::TypeUrl::get().RouteConfiguration);});
-
   for (const auto& secret : resources) {
     MessageUtil::validate(secret);
   }
@@ -101,10 +96,6 @@ void SdsApi::runInitializeCallbackIfAny() {
     initialize_callback_();
     initialize_callback_ = nullptr;
   }
-}
-
-std::string SdsApi::resourceName(const ProtobufWkt::Any& resource) {
-  return MessageUtil::anyConvert<envoy::api::v2::auth::Secret>(resource).name();
 }
 
 

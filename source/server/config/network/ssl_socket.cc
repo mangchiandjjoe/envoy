@@ -8,18 +8,20 @@
 #include "common/ssl/context_config_impl.h"
 #include "common/ssl/ssl_socket.h"
 
+#include "envoy/server/secret_manager.h"
+
 namespace Envoy {
 namespace Server {
 namespace Configuration {
 
 Network::TransportSocketFactoryPtr
 UpstreamSslSocketFactory::createTransportSocketFactory(const Protobuf::Message& message,
-                                                       TransportSocketFactoryContext& context) {
+                                                       TransportSocketFactoryContext& context,
+                                                       const Server::SecretManager& secret_manager) {
   return std::make_unique<Ssl::ClientSslSocketFactory>(
-      Ssl::ClientContextConfigImpl(
-          MessageUtil::downcastAndValidate<const envoy::api::v2::auth::UpstreamTlsContext&>(
-              message)),
-      context.sslContextManager(), context.statsScope());
+      Ssl::ClientContextConfigImpl(MessageUtil::downcastAndValidate<const envoy::api::v2::auth::UpstreamTlsContext&>(message), secret_manager),
+      context.sslContextManager(),
+      context.statsScope());
 }
 
 ProtobufTypes::MessagePtr UpstreamSslSocketFactory::createEmptyConfigProto() {
@@ -30,13 +32,17 @@ static Registry::RegisterFactory<UpstreamSslSocketFactory, UpstreamTransportSock
     upstream_registered_;
 
 Network::TransportSocketFactoryPtr DownstreamSslSocketFactory::createTransportSocketFactory(
-    const std::string& listener_name, const std::vector<std::string>& server_names,
-    bool skip_context_update, const Protobuf::Message& message,
-    TransportSocketFactoryContext& context) {
+    const std::string& listener_name,
+    const std::vector<std::string>& server_names,
+    bool skip_context_update,
+    const Protobuf::Message& message,
+    TransportSocketFactoryContext& context,
+    const Server::SecretManager& secret_manager) {
+
   return std::make_unique<Ssl::ServerSslSocketFactory>(
       Ssl::ServerContextConfigImpl(
           MessageUtil::downcastAndValidate<const envoy::api::v2::auth::DownstreamTlsContext&>(
-              message)),
+              message), secret_manager),
       listener_name, server_names, skip_context_update, context.sslContextManager(),
       context.statsScope());
 }

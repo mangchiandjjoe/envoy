@@ -40,8 +40,7 @@ ValidationInstance::ValidationInstance(Options& options,
       api_(new Api::ValidationImpl(options.fileFlushIntervalMsec())),
       dispatcher_(api_->allocateDispatcher()), singleton_manager_(new Singleton::ManagerImpl()),
       access_log_manager_(*api_, *dispatcher_, access_log_lock, store),
-      listener_manager_(*this, *this, *this),
-      secret_manager_(*this) {
+      listener_manager_(*this, *this, *this) {
   try {
     initialize(options, local_address, component_factory);
   } catch (const EnvoyException& e) {
@@ -82,7 +81,7 @@ void ValidationInstance::initialize(Options& options,
   ssl_context_manager_.reset(new Ssl::ContextManagerImpl(*runtime_loader_));
   cluster_manager_factory_.reset(new Upstream::ValidationClusterManagerFactory(
       runtime(), stats(), threadLocal(), random(), dnsResolver(), sslContextManager(), dispatcher(),
-      localInfo()));
+      localInfo(), secretManager()));
 
   Configuration::MainImpl* main_config = new Configuration::MainImpl();
   config_.reset(main_config);

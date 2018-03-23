@@ -182,7 +182,7 @@ public:
    *        have been started. This controls various behavior related to init management.
    * @param hash supplies the hash to use for duplicate checking.
    */
-  ListenerImpl(const envoy::api::v2::Listener& config, ListenerManagerImpl& parent,
+  ListenerImpl(Instance& server, const envoy::api::v2::Listener& config, ListenerManagerImpl& parent,
                const std::string& name, bool modifiable, bool workers_started, uint64_t hash);
   ~ListenerImpl();
 
@@ -262,6 +262,8 @@ public:
   Stats::Scope& statsScope() const override { return *listener_scope_; }
 
 private:
+  Instance& server_;
+
   ListenerManagerImpl& parent_;
   Network::Address::InstanceConstSharedPtr address_;
   Network::SocketSharedPtr socket_;

@@ -104,10 +104,10 @@ ProdListenerComponentFactory::createDrainManager(envoy::api::v2::Listener::Drain
   return DrainManagerPtr{new DrainManagerImpl(server_, drain_type)};
 }
 
-ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, ListenerManagerImpl& parent,
+ListenerImpl::ListenerImpl(Instance& server, const envoy::api::v2::Listener& config, ListenerManagerImpl& parent,
                            const std::string& name, bool modifiable, bool workers_started,
                            uint64_t hash)
-    : parent_(parent), address_(Network::Utility::protobufAddressToAddress(config.address())),
+    : server_(server), parent_(parent), address_(Network::Utility::protobufAddressToAddress(config.address())),
       global_scope_(parent_.server_.stats().createScope("")),
       listener_scope_(
           parent_.server_.stats().createScope(fmt::format("listener.{}.", address_->asString()))),
@@ -200,8 +200,10 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, ListenerManag
     // factories are needed when the default Ssl::ServerContext updates SSL context based on
     // ClientHello. This behavior is a workaround for initial SNI support before the full SNI based
     // filter chain match is implemented.
+
+    // TODO(jaebong) pass secret manager to the config_factory
     transport_socket_factories_.emplace_back(config_factory.createTransportSocketFactory(
-        name_, sni_domains, skip_context_update, *message, *this));
+        name_, sni_domains, skip_context_update, *message, *this, server_.secretManager()));
     ASSERT(transport_socket_factories_.back() != nullptr);
   }
   ASSERT(!transport_socket_factories_.empty());
@@ -327,7 +329,7 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
   }
 
   ListenerImplPtr new_listener(
-      new ListenerImpl(config, *this, name, modifiable, workers_started_, hash));
+      new ListenerImpl(server_, config, *this, name, modifiable, workers_started_, hash));
   ListenerImpl& new_listener_ref = *new_listener;
 
   // We mandate that a listener with the same name must have the same configured address. This

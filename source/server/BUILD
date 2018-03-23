@@ -236,6 +236,7 @@ envoy_cc_library(
     srcs = ["secret_manager_impl.cc"],
     hdrs = ["secret_manager_impl.h"],
     deps = [
+        ":sds_api_lib",
         "//include/envoy/config:subscription_interface",
         "//source/common/common:assert_lib",
         "//source/common/config:lds_json_lib",

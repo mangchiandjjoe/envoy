@@ -34,8 +34,8 @@ const std::string ContextConfigImpl::DEFAULT_CIPHER_SUITES =
 
 const std::string ContextConfigImpl::DEFAULT_ECDH_CURVES = "X25519:P-256";
 
-ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config)
-    : alpn_protocols_(RepeatedPtrUtil::join(config.alpn_protocols(), ",")),
+ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config, const Server::SecretManager& secret_manager)
+    : secret_manager_(secret_manager), alpn_protocols_(RepeatedPtrUtil::join(config.alpn_protocols(), ",")),
       alt_alpn_protocols_(config.deprecated_v1().alt_alpn_protocols()),
       cipher_suites_(StringUtil::nonEmptyStringOrDefault(
           RepeatedPtrUtil::join(config.tls_params().cipher_suites(), ":"), DEFAULT_CIPHER_SUITES)),
@@ -63,6 +63,13 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           config.tls_certificates().empty()
               ? ""
               : Config::DataSource::getPath(config.tls_certificates()[0].private_key())),
+      sds_name_([&config, this] {
+        if(config.tls_certificate_sds_secret_configs().empty()) {
+          return "";
+        } else {
+          return config.tls_certificate_sds_secret_configs()[0].name().c_str();
+        }
+      }()),
       verify_subject_alt_name_list_(config.validation_context().verify_subject_alt_name().begin(),
                                     config.validation_context().verify_subject_alt_name().end()),
       verify_certificate_hash_(config.validation_context().verify_certificate_hash().empty()
@@ -72,6 +79,14 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           tlsVersionFromProto(config.tls_params().tls_minimum_protocol_version(), TLS1_VERSION)),
       max_protocol_version_(
           tlsVersionFromProto(config.tls_params().tls_maximum_protocol_version(), TLS1_2_VERSION)) {
+
+
+  if(config.tls_certificate_sds_secret_configs()[0].has_sds_config()) {
+    // register SDS ConfigSource to the SecretManager
+    secret_manager_.registerSdsConfigSource(config.tls_certificate_sds_secret_configs()[0].sds_config());
+  }
+
+
   // TODO(htuch): Support multiple hashes.
   ASSERT(config.validation_context().verify_certificate_hash().size() <= 1);
   if (ca_cert_.empty() && !certificate_revocation_list_.empty()) {
@@ -100,23 +115,22 @@ unsigned ContextConfigImpl::tlsVersionFromProto(
   NOT_REACHED;
 }
 
-ClientContextConfigImpl::ClientContextConfigImpl(
-    const envoy::api::v2::auth::UpstreamTlsContext& config)
-    : ContextConfigImpl(config.common_tls_context()), server_name_indication_(config.sni()) {
+ClientContextConfigImpl::ClientContextConfigImpl(const envoy::api::v2::auth::UpstreamTlsContext& config, const Server::SecretManager& secret_manager)
+    : ContextConfigImpl(config.common_tls_context(), secret_manager), server_name_indication_(config.sni()) {
   // TODO(PiotrSikora): Support multiple TLS certificates.
   ASSERT(config.common_tls_context().tls_certificates().size() <= 1);
 }
 
-ClientContextConfigImpl::ClientContextConfigImpl(const Json::Object& config)
+ClientContextConfigImpl::ClientContextConfigImpl(const Json::Object& config, const Server::SecretManager& secret_manager)
     : ClientContextConfigImpl([&config] {
         envoy::api::v2::auth::UpstreamTlsContext upstream_tls_context;
         Config::TlsContextJson::translateUpstreamTlsContext(config, upstream_tls_context);
         return upstream_tls_context;
-      }()) {}
+      }(), secret_manager) {}
 
 ServerContextConfigImpl::ServerContextConfigImpl(
-    const envoy::api::v2::auth::DownstreamTlsContext& config)
-    : ContextConfigImpl(config.common_tls_context()),
+    const envoy::api::v2::auth::DownstreamTlsContext& config, const Server::SecretManager& secret_manager)
+    : ContextConfigImpl(config.common_tls_context(), secret_manager),
       require_client_certificate_(
           PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, require_client_certificate, false)),
       session_ticket_keys_([&config] {
@@ -146,12 +160,12 @@ ServerContextConfigImpl::ServerContextConfigImpl(
   ASSERT(config.common_tls_context().tls_certificates().size() == 1);
 }
 
-ServerContextConfigImpl::ServerContextConfigImpl(const Json::Object& config)
+ServerContextConfigImpl::ServerContextConfigImpl(const Json::Object& config, const Server::SecretManager& secret_manager)
     : ServerContextConfigImpl([&config] {
         envoy::api::v2::auth::DownstreamTlsContext downstream_tls_context;
         Config::TlsContextJson::translateDownstreamTlsContext(config, downstream_tls_context);
         return downstream_tls_context;
-      }()) {}
+      }(), secret_manager) {}
 
 // Append a SessionTicketKey to keys, initializing it with key_data.
 // Throws if key_data is invalid.

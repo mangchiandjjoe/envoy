@@ -5,6 +5,7 @@
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/ssl/context_config.h"
+#include "envoy/server/secret_manager.h"
 
 #include "common/json/json_loader.h"
 
@@ -48,7 +49,7 @@ public:
   unsigned maxProtocolVersion() const override { return max_protocol_version_; };
 
 protected:
-  ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config);
+  ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config, const Server::SecretManager& secret_manager);
 
 private:
   static unsigned
@@ -57,6 +58,8 @@ private:
 
   static const std::string DEFAULT_CIPHER_SUITES;
   static const std::string DEFAULT_ECDH_CURVES;
+
+  const Server::SecretManager& secret_manager_;
 
   const std::string alpn_protocols_;
   const std::string alt_alpn_protocols_;
@@ -70,6 +73,7 @@ private:
   const std::string cert_chain_path_;
   const std::string private_key_;
   const std::string private_key_path_;
+  const std::string sds_name_;
   const std::vector<std::string> verify_subject_alt_name_list_;
   const std::string verify_certificate_hash_;
   const unsigned min_protocol_version_;
@@ -78,8 +82,8 @@ private:
 
 class ClientContextConfigImpl : public ContextConfigImpl, public ClientContextConfig {
 public:
-  explicit ClientContextConfigImpl(const envoy::api::v2::auth::UpstreamTlsContext& config);
-  explicit ClientContextConfigImpl(const Json::Object& config);
+  explicit ClientContextConfigImpl(const envoy::api::v2::auth::UpstreamTlsContext& config, const Server::SecretManager& secret_manager);
+  explicit ClientContextConfigImpl(const Json::Object& config, const Server::SecretManager& secret_manager);
 
   // Ssl::ClientContextConfig
   const std::string& serverNameIndication() const override { return server_name_indication_; }
@@ -90,8 +94,8 @@ private:
 
 class ServerContextConfigImpl : public ContextConfigImpl, public ServerContextConfig {
 public:
-  explicit ServerContextConfigImpl(const envoy::api::v2::auth::DownstreamTlsContext& config);
-  explicit ServerContextConfigImpl(const Json::Object& config);
+  explicit ServerContextConfigImpl(const envoy::api::v2::auth::DownstreamTlsContext& config, const Server::SecretManager& secret_manager);
+  explicit ServerContextConfigImpl(const Json::Object& config, const Server::SecretManager& secret_manager);
 
   // Ssl::ServerContextConfig
   bool requireClientCertificate() const override { return require_client_certificate_; }

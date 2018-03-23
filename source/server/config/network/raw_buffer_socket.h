@@ -1,8 +1,10 @@
 #pragma once
 
 #include "envoy/server/transport_socket_config.h"
+#include "envoy/server/secret_manager.h"
 
 #include "common/config/well_known_names.h"
+
 
 namespace Envoy {
 namespace Server {
@@ -24,7 +26,7 @@ class UpstreamRawBufferSocketFactory : public UpstreamTransportSocketConfigFacto
 public:
   Network::TransportSocketFactoryPtr
   createTransportSocketFactory(const Protobuf::Message& config,
-                               TransportSocketFactoryContext& context) override;
+                               TransportSocketFactoryContext& context, const Server::SecretManager& secret_manager) override;
 };
 
 class DownstreamRawBufferSocketFactory : public DownstreamTransportSocketConfigFactory,
@@ -34,7 +36,7 @@ public:
   createTransportSocketFactory(const std::string& listener_name,
                                const std::vector<std::string>& server_names,
                                bool skip_context_update, const Protobuf::Message& config,
-                               TransportSocketFactoryContext& context) override;
+                               TransportSocketFactoryContext& context, const Server::SecretManager& secret_manager) override;
 };
 
 } // namespace Configuration

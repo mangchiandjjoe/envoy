@@ -214,17 +214,6 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
         main_thread_dispatcher,
         *Protobuf::DescriptorPool::generated_pool()->FindMethodByName(
             "envoy.service.discovery.v2.AggregatedDiscoveryService.StreamAggregatedResources")));
-  } else   if (bootstrap.dynamic_resources().has_sds_config()) {
-    ads_mux_.reset(
-        new Config::GrpcMuxImpl(
-            bootstrap.node(),
-            Config::Utility::factoryForApiConfigSource(
-                *async_client_manager_,
-                bootstrap.dynamic_resources().sds_config().api_config_source(),
-                stats)->create(),
-            main_thread_dispatcher,
-            *Protobuf::DescriptorPool::generated_pool()->FindMethodByName(
-                "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets")));
   } else {
     ads_mux_.reset(new Config::NullGrpcMuxImpl());
   }
@@ -303,6 +292,7 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
   init_helper_.onStaticLoadComplete();
 
   ads_mux_->start();
+  sds_mux_->start();
 
   if (cm_config.has_load_stats_config()) {
     const auto& load_stats_config = cm_config.load_stats_config();
@@ -875,7 +865,7 @@ ClusterSharedPtr ProdClusterManagerFactory::clusterFromProto(
     Outlier::EventLoggerSharedPtr outlier_event_logger, bool added_via_api) {
   return ClusterImplBase::create(cluster, cm, stats_, tls_, dns_resolver_, ssl_context_manager_,
                                  runtime_, random_, main_thread_dispatcher_, local_info_,
-                                 outlier_event_logger, added_via_api);
+                                 outlier_event_logger, added_via_api, secret_manager_);
 }
 
 CdsApiPtr ProdClusterManagerFactory::createCds(

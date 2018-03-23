@@ -72,6 +72,26 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
+    name = "sds_json_lib",
+    srcs = ["sds_json.cc"],
+    hdrs = ["sds_json.h"],
+    external_deps = ["abseil_optional"],
+    deps = [
+        ":address_json_lib",
+        ":json_utility_lib",
+        ":protocol_json_lib",
+        ":utility_lib",
+        "//include/envoy/json:json_object_interface",
+        "//include/envoy/upstream:cluster_manager_interface",
+        "//source/common/common:assert_lib",
+        "//source/common/json:config_schemas_lib",
+        "//source/common/network:utility_lib",
+        "@envoy_api//envoy/api/v2:cds_cc",
+        "@envoy_api//envoy/api/v2/cluster:circuit_breaker_cc",
+    ],
+)
+
+envoy_cc_library(
     name = "filesystem_subscription_lib",
     hdrs = ["filesystem_subscription_impl.h"],
     deps = [
@@ -297,6 +317,7 @@ envoy_cc_library(
     hdrs = ["tls_context_json.h"],
     deps = [
         ":json_utility_lib",
+        ":sds_json_lib",
         "//include/envoy/json:json_object_interface",
         "//source/common/common:utility_lib",
         "@envoy_api//envoy/api/v2/auth:cert_cc",

@@ -4,6 +4,7 @@
 
 #include "envoy/network/transport_socket.h"
 #include "envoy/ssl/context_manager.h"
+#include "envoy/server/secret_manager.h"
 
 #include "common/protobuf/protobuf.h"
 
@@ -66,7 +67,7 @@ public:
    */
   virtual Network::TransportSocketFactoryPtr
   createTransportSocketFactory(const Protobuf::Message& config,
-                               TransportSocketFactoryContext& context) PURE;
+                               TransportSocketFactoryContext& context, const Server::SecretManager& secret_manager) PURE;
 };
 
 /**
@@ -98,7 +99,7 @@ public:
   createTransportSocketFactory(const std::string& listener_name,
                                const std::vector<std::string>& server_names,
                                bool skip_ssl_context_update, const Protobuf::Message& config,
-                               TransportSocketFactoryContext& context) PURE;
+                               TransportSocketFactoryContext& context, const Server::SecretManager& secret_manager) PURE;
 };
 
 } // namespace Configuration

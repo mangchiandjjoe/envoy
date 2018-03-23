@@ -5,6 +5,7 @@
 #include "common/common/utility.h"
 #include "common/config/json_utility.h"
 #include "common/protobuf/utility.h"
+#include "common/config/sds_json.h"
 
 namespace Envoy {
 namespace Config {
@@ -43,6 +44,17 @@ void TlsContextJson::translateCommonTlsContext(
       json_tls_context.getString("alt_alpn_protocols", ""));
 
   translateTlsCertificate(json_tls_context, *common_tls_context.mutable_tls_certificates()->Add());
+
+  if(json_tls_context.hasObject("tls_certificate_sds_secret_configs")) {
+    for(auto node: json_tls_context.getObjectArray("tls_certificate_sds_secret_configs")) {
+      auto sds_secret_configs = common_tls_context.mutable_tls_certificate_sds_secret_configs()->Add();
+      sds_secret_configs->set_name(node->getString("name"));
+
+      if(node->hasObject("sds_config")) {
+        SdsJson::translateConfigSource(*node->getObject("sds_config"), *sds_secret_configs->mutable_sds_config());
+      }
+    }
+  }
 
   auto* validation_context = common_tls_context.mutable_validation_context();
   if (json_tls_context.hasObject("ca_cert_file")) {

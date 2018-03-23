@@ -1,9 +1,13 @@
 #include "server/secret_manager_impl.h"
-#include "envoy/server/instance.h"
-#include "common/ssl/secret_impl.h"
 
 #include <string>
 
+#include "openssl/ssl.h"
+
+#include "envoy/config/bootstrap/v2/bootstrap.pb.h"
+#include "envoy/server/instance.h"
+
+#include "common/ssl/secret_impl.h"
 #include "common/common/assert.h"
 #include "common/ssl/context_config_impl.h"
 #include "common/filesystem/filesystem_impl.h"
@@ -12,14 +16,29 @@
 #include "common/filesystem/filesystem_impl.h"
 #include "common/protobuf/utility.h"
 
-#include "openssl/ssl.h"
-
 namespace Envoy {
 namespace Server {
 
-SecretManagerImpl::SecretManagerImpl(Instance& server)
-    : server_(server) {
+SecretManagerImpl::SecretManagerImpl(
+    Instance& server, envoy::config::bootstrap::v2::SecretManager config)
+    : server_(server),
+      config_(config) {
+}
 
+bool SecretManagerImpl::registerSdsConfigSource(const envoy::api::v2::core::ConfigSource& sds_config) {
+  std::unique_ptr<SdsApi> sds_api(new SdsApi(
+      sds_config,
+      server_.clusterManager(),
+      server_.dispatcher(),
+      server_.random(),
+      server_.initManager(),
+      server_.localInfo(),
+      server_.stats(),
+      *this));
+
+  sds_apis_.push_back(std::move(sds_api));
+
+  return true;
 }
 
 bool SecretManagerImpl::addOrUpdateSecret(

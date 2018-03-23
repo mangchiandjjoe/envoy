@@ -162,6 +162,7 @@ envoy_cc_library(
     name = "transport_socket_config_interface",
     hdrs = ["transport_socket_config.h"],
     deps = [
+        ":secret_manager_interface",
         "//include/envoy/network:transport_socket_interface",
         "//include/envoy/ssl:context_manager_interface",
         "//source/common/protobuf",

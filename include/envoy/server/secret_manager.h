@@ -28,6 +28,9 @@ class SecretManager {
   virtual std::shared_ptr<Ssl::Secret> getSecret(const std::string& name) PURE;
 
   virtual bool removeSecret(const std::string& name) PURE;
+
+  virtual bool registerSdsConfigSource(const envoy::api::v2::core::ConfigSource& config_source) PURE;
+
 };
 
 }  // namespace Server

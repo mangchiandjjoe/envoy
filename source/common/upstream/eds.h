@@ -20,7 +20,8 @@ public:
                  Stats::Store& stats, Ssl::ContextManager& ssl_context_manager,
                  const LocalInfo::LocalInfo& local_info, ClusterManager& cm,
                  Event::Dispatcher& dispatcher, Runtime::RandomGenerator& random,
-                 bool added_via_api);
+                 bool added_via_api,
+                 const Server::SecretManager& secret_manager);
 
   const std::string versionInfo() const { return subscription_->versionInfo(); }
 

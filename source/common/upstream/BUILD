@@ -67,6 +67,7 @@ envoy_cc_library(
         "//include/envoy/ssl:context_manager_interface",
         "//include/envoy/thread_local:thread_local_interface",
         "//include/envoy/upstream:cluster_manager_interface",
+        "//include/envoy/server:secret_manager_interface",
         "//source/common/common:enum_to_int",
         "//source/common/common:utility_lib",
         "//source/common/config:cds_json_lib",
@@ -82,6 +83,7 @@ envoy_cc_library(
         "//source/common/protobuf:utility_lib",
         "//source/common/router:shadow_writer_lib",
         "//source/common/upstream:upstream_lib",
+        "//source/server:sds_api_lib",
         "@envoy_api//envoy/api/v2/core:base_cc",
     ],
 )
