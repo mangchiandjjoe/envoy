@@ -221,7 +221,7 @@ void InstanceImpl::initialize(Options& options,
   listener_manager_.reset(
       new ListenerManagerImpl(*this, listener_component_factory_, worker_factory_));
 
-  // TODO(jaebong)
+  // Shared storage of the secrets from SDS. Manages SDS configurations.
   secret_manager_.reset(new SecretManagerImpl(*this, bootstrap.secret_manager()));
 
   // The main thread is also registered for thread local updates so that code that does not care
@@ -236,7 +236,7 @@ void InstanceImpl::initialize(Options& options,
   runtime_loader_ = component_factory.createRuntime(*this, initial_config);
 
   // Once we have runtime we can initialize the SSL context manager.
-  ssl_context_manager_.reset(new Ssl::ContextManagerImpl(*runtime_loader_));
+  ssl_context_manager_.reset(new Ssl::ContextManagerImpl(*runtime_loader_, *secret_manager_));
 
   cluster_manager_factory_.reset(new Upstream::ProdClusterManagerFactory(
       runtime(), stats(), threadLocal(), random(), dnsResolver(), sslContextManager(), dispatcher(),

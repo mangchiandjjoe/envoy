@@ -7,6 +7,7 @@
 
 #include "envoy/runtime/runtime.h"
 #include "envoy/ssl/context_manager.h"
+#include "envoy/server/secret_manager.h"
 
 namespace Envoy {
 namespace Ssl {
@@ -20,7 +21,7 @@ namespace Ssl {
  */
 class ContextManagerImpl final : public ContextManager {
 public:
-  ContextManagerImpl(Runtime::Loader& runtime) : runtime_(runtime) {}
+  ContextManagerImpl(Runtime::Loader& runtime, Server::SecretManager& secret_manager) : runtime_(runtime), secret_manager_(secret_manager) {}
   ~ContextManagerImpl();
 
   /**
@@ -31,6 +32,10 @@ public:
   void releaseClientContext(ClientContext* context);
   void releaseServerContext(ServerContext* context, const std::string& listener_name,
                             const std::vector<std::string>& server_names);
+  /**
+   * Return the secret manager
+   */
+  Server::SecretManager& secretManager() { return secret_manager_; }
 
   // Ssl::ContextManager
   Ssl::ClientContextPtr createSslClientContext(Stats::Scope& scope,
@@ -53,6 +58,7 @@ private:
   mutable std::shared_timed_mutex contexts_lock_;
   std::unordered_map<std::string, std::unordered_map<std::string, ServerContext*>> map_exact_;
   std::unordered_map<std::string, std::unordered_map<std::string, ServerContext*>> map_wildcard_;
+  Server::SecretManager& secret_manager_;
 };
 
 } // namespace Ssl

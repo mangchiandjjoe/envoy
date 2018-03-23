@@ -129,16 +129,33 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
     SSL_CTX_set_cert_verify_callback(ctx_.get(), ContextImpl::verifyCallback, this);
   }
 
-  if (config.certChain().empty() != config.privateKey().empty()) {
+  std::string certChain = config.certChain();
+  std::string privateKey = config.privateKey();
+
+  if (!config.sdsName().empty() && certChain.empty() && privateKey.empty()) {
+    // lookup secret from the SecretManager
+    std::cout << __FILE__ << ":" << __LINE__ << " looking up sds: " << config.sdsName() << std::endl;
+    auto secret = parent.secretManager().getSecret(config.sdsName());
+    if(secret) {
+      certChain = secret->getCertificateChain();
+      privateKey = secret->getPrivateKey();
+      std::cout << __FILE__ << ":" << __LINE__ << " certChain and privateKey were overridden with SDS: " << config.sdsName() << std::endl;
+    }
+  }
+
+  std::cout << __FILE__ << ":" << __LINE__ << " certChain=" << certChain << std::endl;
+  std::cout << __FILE__ << ":" << __LINE__ << " privateKey=" << privateKey << std::endl;
+
+  if (certChain.empty() != privateKey.empty()) {
     throw EnvoyException(fmt::format("Failed to load incomplete certificate from {}, {}",
                                      config.certChainPath(), config.privateKeyPath()));
   }
 
-  if (!config.certChain().empty()) {
+  if (!certChain.empty()) {
     // Load certificate chain.
     cert_chain_file_path_ = config.certChainPath();
     bssl::UniquePtr<BIO> bio(
-        BIO_new_mem_buf(const_cast<char*>(config.certChain().data()), config.certChain().size()));
+        BIO_new_mem_buf(const_cast<char*>(certChain.data()), certChain.size()));
     RELEASE_ASSERT(bio != nullptr);
     cert_chain_.reset(PEM_read_bio_X509_AUX(bio.get(), nullptr, nullptr, nullptr));
     if (cert_chain_ == nullptr || !SSL_CTX_use_certificate(ctx_.get(), cert_chain_.get())) {
@@ -169,7 +186,7 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
 
     // Load private key.
     bio.reset(
-        BIO_new_mem_buf(const_cast<char*>(config.privateKey().data()), config.privateKey().size()));
+        BIO_new_mem_buf(const_cast<char*>(privateKey.data()), privateKey.size()));
     RELEASE_ASSERT(bio != nullptr);
     bssl::UniquePtr<EVP_PKEY> pkey(PEM_read_bio_PrivateKey(bio.get(), nullptr, nullptr, nullptr));
     if (pkey == nullptr || !SSL_CTX_use_PrivateKey(ctx_.get(), pkey.get())) {

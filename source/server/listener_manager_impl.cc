@@ -200,8 +200,6 @@ ListenerImpl::ListenerImpl(Instance& server, const envoy::api::v2::Listener& con
     // factories are needed when the default Ssl::ServerContext updates SSL context based on
     // ClientHello. This behavior is a workaround for initial SNI support before the full SNI based
     // filter chain match is implemented.
-
-    // TODO(jaebong) pass secret manager to the config_factory
     transport_socket_factories_.emplace_back(config_factory.createTransportSocketFactory(
         name_, sni_domains, skip_context_update, *message, *this, server_.secretManager()));
     ASSERT(transport_socket_factories_.back() != nullptr);

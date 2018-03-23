@@ -29,12 +29,14 @@ SdsApi::SdsApi(Instance& server,
         return cfg;
       }()),
       secret_manager_(secret_manager) {
+  std::cout << __FILE__ << ":" << __LINE__ << " " << std::endl;
 
   server_.initManager().registerTarget(*this);
 }
 
 void SdsApi::initialize(std::function<void()> callback) {
   initialize_callback_ = callback;
+  std::cout << __FILE__ << ":" << __LINE__ << " " << std::endl;
 
   subscription_ =
       Envoy::Config::SubscriptionFactory::subscriptionFromConfigSource<

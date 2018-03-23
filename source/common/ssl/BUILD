@@ -72,6 +72,7 @@ envoy_cc_library(
     external_deps = ["ssl"],
     deps = [
         "//include/envoy/runtime:runtime_interface",
+        "//include/envoy/server:secret_manager_interface",
         "//include/envoy/ssl:context_config_interface",
         "//include/envoy/ssl:context_interface",
         "//include/envoy/ssl:context_manager_interface",

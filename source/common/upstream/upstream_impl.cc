@@ -155,7 +155,6 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
   ProtobufTypes::MessagePtr message =
       Config::Utility::translateToFactoryConfig(transport_socket, config_factory);
 
-  // TODO(jaebong) pass secret manager to the config_factory
   transport_socket_factory_ = config_factory.createTransportSocketFactory(*message, *this, secret_manager_);
 
   switch (config.lb_policy()) {

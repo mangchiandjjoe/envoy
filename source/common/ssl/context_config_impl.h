@@ -41,6 +41,7 @@ public:
   const std::string& privateKeyPath() const override {
     return (private_key_path_.empty() && !private_key_.empty()) ? INLINE_STRING : private_key_path_;
   }
+  const std::string& sdsName() const override { return sds_name_; }
   const std::vector<std::string>& verifySubjectAltNameList() const override {
     return verify_subject_alt_name_list_;
   };
