@@ -1,6 +1,7 @@
 #include "server/secret_manager_impl.h"
 
 #include <string>
+#include <shared_mutex>
 
 #include "openssl/ssl.h"
 
@@ -36,9 +37,20 @@ bool SecretManagerImpl::registerSdsConfigSource(const envoy::api::v2::core::Conf
   return true;
 }
 
+bool SecretManagerImpl::registerSdsTransportSorcketFactory(
+    const std::string name,
+    Network::TransportSocketFactory* transportSocketFactory) {
+
+  std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
+
+  sds_transport_sorcket_factory_[name] = transportSocketFactory;
+
+  return true;
+}
+
+
 bool SecretManagerImpl::addOrUpdateSecret(
-    const envoy::api::v2::auth::Secret& config) {
-  // read/write lock
+    const envoy::api::v2::auth::Secret& config, bool is_static) {
   std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
 
   if (config.has_tls_certificate()) {
@@ -48,7 +60,14 @@ bool SecretManagerImpl::addOrUpdateSecret(
         config.tls_certificate().private_key(), true);
 
     secrets_[config.name()] = std::make_shared<Ssl::SecretImpl>(
-        Ssl::SecretImpl(certificate_chain, private_key));
+        Ssl::SecretImpl(certificate_chain, private_key, is_static));
+
+    if(&server_.clusterManager() != nullptr && &server_.listenerManager() != nullptr) {
+      if(!server_.clusterManager().updateClusters() || !server_.listenerManager().updateListeners()) {
+        // TODO (jaebong) secret was not completely initialized. Need to try it again.
+      }
+    }
+
   } else if (config.has_session_ticket_keys()) {
     return false;
   } else {
@@ -59,7 +78,6 @@ bool SecretManagerImpl::addOrUpdateSecret(
 }
 
 SecretManager::SecretInfoMap SecretManagerImpl::secrets() {
-  // read lock
   std::shared_lock < std::shared_timed_mutex > rhs(mutex_);
 
   SecretManager::SecretInfoMap ret;
@@ -72,7 +90,6 @@ SecretManager::SecretInfoMap SecretManagerImpl::secrets() {
 }
 
 bool SecretManagerImpl::removeSecret(const std::string& name) {
-  // read/write lock
   std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
 
   if (secrets_.find(name) != secrets_.end()) {
@@ -83,12 +100,11 @@ bool SecretManagerImpl::removeSecret(const std::string& name) {
 }
 
 std::shared_ptr<Ssl::Secret> SecretManagerImpl::getSecret(
-    const std::string& name) {
-  // read lock
-  std::shared_lock < std::shared_timed_mutex > rhs(mutex_);
+    const std::string& name, bool is_static) {
+  // std::shared_lock < std::shared_timed_mutex > rhs(mutex_);
 
   if (secrets_.find(name) != secrets_.end()) {
-    return secrets_[name];
+    return secrets_[name]->isStatic() == is_static ? secrets_[name]: nullptr;
   }
 
   return nullptr;

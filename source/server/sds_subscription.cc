@@ -31,7 +31,6 @@ SdsSubscription::SdsSubscription(
 
   UNREFERENCED_PARAMETER(api_config_source);
 
-
   // If we are building an CdsSubscription, the ConfigSource should be REST_LEGACY.
   ASSERT(
       api_config_source.api_type()

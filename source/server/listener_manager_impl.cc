@@ -302,6 +302,52 @@ ListenerManagerStats ListenerManagerImpl::generateStats(Stats::Scope& scope) {
                                      POOL_GAUGE_PREFIX(scope, final_prefix))};
 }
 
+bool ListenerManagerImpl::updateListeners() {
+  std::vector<uint64_t> created_listener_hashes;
+
+  for (const auto& info : pending_creation_listeners_) {
+    bool is_ready_to_create = true;
+
+    for (auto item : info.second->getSdsSecrets()) {
+      if (server_.secretManager().getSecret(item.first, item.second) == nullptr) {
+        is_ready_to_create = false;
+        break;
+      }
+    }
+
+    if (is_ready_to_create) {
+      ENVOY_LOG(info, "All required SDS secrets were downloaded. creating listner: ", info.first);
+
+      try {
+        if(addOrUpdateListener(info.second->getConfig(), info.second->getModifiable())) {
+          created_listener_hashes.push_back(info.first);
+        } else {
+          ENVOY_LOG(info, "Failed to crate a listner: {}", info.first);
+        }
+      } catch (EnvoyException& e) {
+        ENVOY_LOG(info, "failed to create a cluster: {} {}", info.second->getConfig().name(), e.what());
+      }
+    }
+  }
+
+  // removed completed from pending_creation_listeners_
+  for (uint64_t listener_hash : created_listener_hashes) {
+    pending_creation_listeners_.erase(listener_hash);
+  }
+
+  // Update secrets for warming_listeners_
+  for(ListenerImplPtr& listner: warming_listeners_) {
+    std::cout << __FILE__ << ":" << __LINE__ << " warming: " << listner->address() << std::endl;
+  }
+
+  // Update secrets for active_listeners_
+  for(ListenerImplPtr& listner: active_listeners_) {
+    std::cout << __FILE__ << ":" << __LINE__ << " active: " << listner->address() << std::endl;
+  }
+
+  return true;
+}
+
 bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& config,
                                               bool modifiable) {
   std::string name;
@@ -312,6 +358,52 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
   }
   const uint64_t hash = MessageUtil::hash(config);
   ENVOY_LOG(debug, "begin add/update listener: name={} hash={}", name, hash);
+
+  std::vector<std::pair<std::string, bool>> sds_secret_names;
+  for (auto filter_chain : config.filter_chains()) {
+    if (filter_chain.has_tls_context()
+        && filter_chain.tls_context().has_common_tls_context()) {
+      auto common_tls_context = filter_chain.tls_context().common_tls_context();
+      for (auto sds_secrets_config : filter_chain.tls_context()
+          .common_tls_context().tls_certificate_sds_secret_configs()) {
+        // Register sds_config to the SecretManager. SecretManager starts
+        // downloading secrets from SDS server.
+        if (sds_secrets_config.has_sds_config()) {
+          this->server_.secretManager().registerSdsConfigSource(
+              sds_secrets_config.sds_config());
+        }
+
+        sds_secret_names.push_back(
+            {sds_secrets_config.name(), !sds_secrets_config.has_sds_config()});
+      }
+    }
+  }
+
+  // Check all required SDS secrets were downloaded
+  bool sds_secret_required = false;
+  for (const auto& sds_secret : sds_secret_names) {
+    if (this->server_.secretManager().getSecret(sds_secret.first, sds_secret.second) == nullptr) {
+      sds_secret_required = true;
+      break;
+    }
+  }
+
+  // If some or all secrets were not downloaded yet, then suspend the listener
+  // creation after all secrets were downloaded.
+  if (sds_secret_required) {
+    // Add or update listener when all related sds secrets were arrived
+
+    ListenerCreationInfoPtr info(
+        new ListenerCreationInfo(config, modifiable, sds_secret_names));
+    pending_creation_listeners_[hash] = std::move(info);
+
+    ENVOY_LOG(
+        info,
+        "required sds secrets are not ready yet. adding to pending " "listener creation list. name={} hash={}",
+        name, hash);
+
+    return true;
+  }
 
   auto existing_active_listener = getListenerByName(active_listeners_, name);
   auto existing_warming_listener = getListenerByName(warming_listeners_, name);

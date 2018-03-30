@@ -45,9 +45,18 @@ bool FilterChainUtility::buildFilterChain(Network::ListenerFilterManager& filter
 void MainImpl::initialize(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,
                           Instance& server,
                           Upstream::ClusterManagerFactory& cluster_manager_factory) {
+  // Load secrets in the static static_resources before initializing listeners and clusters
+  const auto& secrets = bootstrap.static_resources().secrets();
+  ENVOY_LOG(info, "loading {} secret(s)", secrets.size());
+  for (ssize_t i = 0; i < secrets.size(); i++) {
+    ENVOY_LOG(debug, "secret #{}:", i);
+    server.secretManager().addOrUpdateSecret(secrets[i], true);
+  }
+
   cluster_manager_ = cluster_manager_factory.clusterManagerFromProto(
       bootstrap, server.stats(), server.threadLocal(), server.runtime(), server.random(),
-      server.localInfo(), server.accessLogManager());
+      server.localInfo(), server.accessLogManager(),
+      server.secretManager());
   const auto& listeners = bootstrap.static_resources().listeners();
   ENVOY_LOG(info, "loading {} listener(s)", listeners.size());
   for (ssize_t i = 0; i < listeners.size(); i++) {

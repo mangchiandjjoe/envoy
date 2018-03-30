@@ -63,15 +63,23 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           config.tls_certificates().empty()
               ? ""
               : Config::DataSource::getPath(config.tls_certificates()[0].private_key())),
-      sds_name_([&config, &secret_manager] {
+      sds_secret_name_([&config, &secret_manager] {
         if(config.tls_certificate_sds_secret_configs().empty()) {
           return "";
         } else {
+          // TODO(jaebong) Does SDS secret config need to be multiple?
           if(config.tls_certificate_sds_secret_configs()[0].has_sds_config()) {
             // register SDS ConfigSource to the SecretManager
             secret_manager.registerSdsConfigSource(config.tls_certificate_sds_secret_configs()[0].sds_config());
           }
           return config.tls_certificate_sds_secret_configs()[0].name().c_str();
+        }
+      }()),
+      static_sds_secret_([&config, &secret_manager] {
+        if(config.tls_certificate_sds_secret_configs().empty()) {
+          return false;
+        } else {
+          return not config.tls_certificate_sds_secret_configs()[0].has_sds_config();
         }
       }()),
       verify_subject_alt_name_list_(config.validation_context().verify_subject_alt_name().begin(),
@@ -153,7 +161,7 @@ ServerContextConfigImpl::ServerContextConfigImpl(
   // TODO(PiotrSikora): Support multiple TLS certificates.
   // TODO(mattklein123): All of the ASSERTs in this file need to be converted to exceptions with
   //                     proper error handling.
-  ASSERT(config.common_tls_context().tls_certificates().size() == 1);
+  ASSERT(config.common_tls_context().tls_certificates().size() == 1 || this->sdsSecretName().length() > 0);
 }
 
 ServerContextConfigImpl::ServerContextConfigImpl(const Json::Object& config, Server::SecretManager& secret_manager)

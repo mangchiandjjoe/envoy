@@ -221,7 +221,7 @@ void InstanceImpl::initialize(Options& options,
   listener_manager_.reset(
       new ListenerManagerImpl(*this, listener_component_factory_, worker_factory_));
 
-  // Shared storage of the secrets from SDS. Manages SDS configurations.
+  // Shared storage of secrets from SDS
   secret_manager_.reset(new SecretManagerImpl(*this, bootstrap.secret_manager()));
 
   // The main thread is also registered for thread local updates so that code that does not care

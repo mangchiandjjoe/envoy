@@ -84,6 +84,43 @@ struct ListenerManagerStats {
   ALL_LISTENER_MANAGER_STATS(GENERATE_COUNTER_STRUCT, GENERATE_GAUGE_STRUCT)
 };
 
+class ListenerCreationInfo {
+ public:
+  ListenerCreationInfo(const envoy::api::v2::Listener& config, bool modifiable,
+                       const std::vector<std::pair<std::string, bool>> sds_secrets)
+      : config_([&config] {
+          envoy::api::v2::Listener cfg;
+          cfg.CopyFrom(config);
+          return cfg;
+        }()),
+        modifiable_(modifiable),
+        sds_secrets_(sds_secrets) {
+  }
+
+  virtual ~ListenerCreationInfo() {
+  }
+
+  const envoy::api::v2::Listener& getConfig() {
+    return config_;
+  }
+
+  bool getModifiable() {
+    return modifiable_;
+  }
+
+  const std::vector<std::pair<std::string, bool>>& getSdsSecrets() {
+    return sds_secrets_;
+  }
+
+ private:
+  const envoy::api::v2::Listener config_;
+  bool modifiable_;
+  const std::vector<std::pair<std::string, bool>> sds_secrets_;
+};
+
+typedef std::unique_ptr<ListenerCreationInfo> ListenerCreationInfoPtr;
+
+
 /**
  * Implementation of ListenerManager.
  */
@@ -102,6 +139,8 @@ public:
   void startWorkers(GuardDog& guard_dog) override;
   void stopListeners() override;
   void stopWorkers() override;
+
+  bool updateListeners() override;
 
   Instance& server_;
   ListenerComponentFactory& factory_;
@@ -143,12 +182,18 @@ private:
    */
   ListenerList::iterator getListenerByName(ListenerList& listeners, const std::string& name);
 
+  // If all required information are not ready, creation request will be added
+  // to the pending_creation_listener_
+  std::unordered_map<uint64_t, ListenerCreationInfoPtr> pending_creation_listeners_;
+
   // Active listeners are listeners that are currently accepting new connections on the workers.
   ListenerList active_listeners_;
+
   // Warming listeners are listeners that may need further initialization via the listener's init
   // manager. For example, RDS, or in the future KDS. Once a listener is done warming it will
   // be transitioned to active.
   ListenerList warming_listeners_;
+
   // Draining listeners are listeners that are in the process of being drained and removed. They
   // go through two phases where first the workers stop accepting new connections and existing
   // connections are drained. Then after that time period the listener is removed from all workers
@@ -287,6 +332,7 @@ private:
   bool saw_listener_create_failure_{};
   const envoy::api::v2::core::Metadata metadata_;
   Network::Socket::OptionsSharedPtr listen_socket_options_;
+
 };
 
 } // namespace Server

@@ -18,10 +18,22 @@ Network::TransportSocketFactoryPtr
 UpstreamSslSocketFactory::createTransportSocketFactory(const Protobuf::Message& message,
                                                        TransportSocketFactoryContext& context,
                                                        Server::SecretManager& secret_manager) {
-  return std::make_unique<Ssl::ClientSslSocketFactory>(
-      Ssl::ClientContextConfigImpl(MessageUtil::downcastAndValidate<const envoy::api::v2::auth::UpstreamTlsContext&>(message), secret_manager),
+  auto config = Ssl::ClientContextConfigImpl(
+      MessageUtil::downcastAndValidate<
+          const envoy::api::v2::auth::UpstreamTlsContext&>(message),
+      secret_manager);
+
+  auto clientSslSocketFactory = std::make_unique<Ssl::ClientSslSocketFactory>(
+      config,
       context.sslContextManager(),
       context.statsScope());
+
+  // TODO(jaebong)
+  if (config.sdsSecretName().length() > 0) {
+
+  }
+
+  return std::move(clientSslSocketFactory);
 }
 
 ProtobufTypes::MessagePtr UpstreamSslSocketFactory::createEmptyConfigProto() {
@@ -39,12 +51,16 @@ Network::TransportSocketFactoryPtr DownstreamSslSocketFactory::createTransportSo
     TransportSocketFactoryContext& context,
     Server::SecretManager& secret_manager) {
 
-  return std::make_unique<Ssl::ServerSslSocketFactory>(
-      Ssl::ServerContextConfigImpl(
-          MessageUtil::downcastAndValidate<const envoy::api::v2::auth::DownstreamTlsContext&>(
-              message), secret_manager),
-      listener_name, server_names, skip_context_update, context.sslContextManager(),
-      context.statsScope());
+  auto serverContextConfigImpl = Ssl::ServerContextConfigImpl(
+      MessageUtil::downcastAndValidate<
+          const envoy::api::v2::auth::DownstreamTlsContext&>(message),
+      secret_manager);
+
+  auto serverSslSocketFactory = std::make_unique<Ssl::ServerSslSocketFactory>(
+      serverContextConfigImpl, listener_name, server_names, skip_context_update,
+      context.sslContextManager(), context.statsScope());
+
+  return std::move(serverSslSocketFactory);
 }
 
 ProtobufTypes::MessagePtr DownstreamSslSocketFactory::createEmptyConfigProto() {

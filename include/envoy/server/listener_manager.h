@@ -85,6 +85,8 @@ public:
    */
   virtual bool addOrUpdateListener(const envoy::api::v2::Listener& config, bool modifiable) PURE;
 
+  virtual bool updateListeners() PURE;
+
   /**
    * @return std::vector<std::reference_wrapper<Network::ListenerConfig>> a list of the currently
    * loaded listeners. Note that this routine returns references to the existing listeners. The

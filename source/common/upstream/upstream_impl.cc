@@ -155,6 +155,7 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
   ProtobufTypes::MessagePtr message =
       Config::Utility::translateToFactoryConfig(transport_socket, config_factory);
 
+  // TODO(jaebong) how can I replace transport_socket_factory_ when the secret is updated
   transport_socket_factory_ = config_factory.createTransportSocketFactory(*message, *this, secret_manager_);
 
   switch (config.lb_policy()) {

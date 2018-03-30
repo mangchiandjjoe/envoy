@@ -29,14 +29,12 @@ SdsApi::SdsApi(Instance& server,
         return cfg;
       }()),
       secret_manager_(secret_manager) {
-  std::cout << __FILE__ << ":" << __LINE__ << " " << std::endl;
 
   server_.initManager().registerTarget(*this);
 }
 
 void SdsApi::initialize(std::function<void()> callback) {
   initialize_callback_ = callback;
-  std::cout << __FILE__ << ":" << __LINE__ << " " << std::endl;
 
   subscription_ =
       Envoy::Config::SubscriptionFactory::subscriptionFromConfigSource<
@@ -68,26 +66,12 @@ void SdsApi::onConfigUpdate(const ResourceVector& resources) {
     MessageUtil::validate(secret);
   }
 
-  // We need to keep track of which secrets we might need to remove.
-  SecretManager::SecretInfoMap secrets_to_remove;
-  for (const auto& elem : secret_manager_.secrets()) {
-    secrets_to_remove.emplace(elem.first, elem.second);
-  }
-
   for (const auto& secret : resources) {
     const std::string secret_name = secret.name();
 
-    secrets_to_remove.erase(secret_name);
-    if (secret_manager_.addOrUpdateSecret(secret)) {
+    // All secrets downloaded through the SdsApi are not static
+    if (secret_manager_.addOrUpdateSecret(secret, false)) {
       ENVOY_LOG(info, "sds: add/update secret '{}'", secret_name);
-    } else {
-      ENVOY_LOG(debug, "sds: add/update secret '{}' skipped", secret_name);
-    }
-  }
-
-  for (const auto& elem : secrets_to_remove) {
-    if (secret_manager_.removeSecret(elem.first)) {
-      ENVOY_LOG(info, "sds: remove secret '{}'", elem.first);
     }
   }
 

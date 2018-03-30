@@ -132,19 +132,14 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
   std::string certChain = config.certChain();
   std::string privateKey = config.privateKey();
 
-  if (!config.sdsName().empty() && certChain.empty() && privateKey.empty()) {
+  if(!config.sdsSecretName().empty()) {
     // lookup secret from the SecretManager
-    std::cout << __FILE__ << ":" << __LINE__ << " looking up sds: " << config.sdsName() << std::endl;
-    auto secret = parent.secretManager().getSecret(config.sdsName());
+    auto secret = parent.secretManager().getSecret(config.sdsSecretName(), config.isStaticSdsSecret());
     if(secret) {
       certChain = secret->getCertificateChain();
       privateKey = secret->getPrivateKey();
-      std::cout << __FILE__ << ":" << __LINE__ << " certChain and privateKey were overridden with SDS: " << config.sdsName() << std::endl;
     }
   }
-
-  std::cout << __FILE__ << ":" << __LINE__ << " certChain=" << certChain << std::endl;
-  std::cout << __FILE__ << ":" << __LINE__ << " privateKey=" << privateKey << std::endl;
 
   if (certChain.empty() != privateKey.empty()) {
     throw EnvoyException(fmt::format("Failed to load incomplete certificate from {}, {}",

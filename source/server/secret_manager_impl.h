@@ -2,6 +2,7 @@
 
 #include <mutex>
 #include <shared_mutex>
+#include <unordered_map>
 
 #include "envoy/config/bootstrap/v2/bootstrap.pb.h"
 #include "envoy/server/secret_manager.h"
@@ -23,15 +24,20 @@ class SecretManagerImpl : public SecretManager {
   virtual ~SecretManagerImpl() {
   }
 
-  bool addOrUpdateSecret(const envoy::api::v2::auth::Secret& config) override;
+  bool addOrUpdateSecret(const envoy::api::v2::auth::Secret& config, bool is_static) override;
 
-  std::shared_ptr<Ssl::Secret> getSecret(const std::string& name) override;
+  std::shared_ptr<Ssl::Secret> getSecret(const std::string& name, bool is_static) override;
 
   SecretInfoMap secrets() override;
 
   bool removeSecret(const std::string& name) override;
 
-  bool registerSdsConfigSource(const envoy::api::v2::core::ConfigSource& config_source) override;
+  bool registerSdsConfigSource(
+      const envoy::api::v2::core::ConfigSource& config_source) override;
+
+  bool registerSdsTransportSorcketFactory(
+      const std::string name,
+      Network::TransportSocketFactory* transportSocketFactory) override;
 
  private:
   const std::string readDataSource(
@@ -46,6 +52,7 @@ class SecretManagerImpl : public SecretManager {
   envoy::config::bootstrap::v2::SecretManager config_;
 
   std::vector<std::unique_ptr<SdsApi>> sds_apis_;
+  std::unordered_map<std::string, Network::TransportSocketFactory*> sds_transport_sorcket_factory_;
 
  private:
   mutable std::shared_timed_mutex mutex_;

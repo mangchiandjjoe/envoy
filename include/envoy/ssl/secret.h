@@ -28,6 +28,7 @@ class Secret {
   }
   virtual const std::string getCertificateChain() PURE;
   virtual const std::string getPrivateKey() PURE;
+  virtual bool isStatic() PURE;
 };
 
 typedef std::unique_ptr<Secret> SecretPtr;

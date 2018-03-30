@@ -50,7 +50,8 @@ public:
   clusterManagerFromProto(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,
                           Stats::Store& stats, ThreadLocal::Instance& tls, Runtime::Loader& runtime,
                           Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
-                          AccessLog::AccessLogManager& log_manager) override;
+                          AccessLog::AccessLogManager& log_manager,
+                          Server::SecretManager& secret_manager) override;
   Http::ConnectionPool::InstancePtr
   allocateConnPool(Event::Dispatcher& dispatcher, HostConstSharedPtr host,
                    ResourcePriority priority, Http::Protocol protocol,
@@ -156,7 +157,10 @@ public:
                      ThreadLocal::Instance& tls, Runtime::Loader& runtime,
                      Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
                      AccessLog::AccessLogManager& log_manager,
-                     Event::Dispatcher& main_thread_dispatcher);
+                     Event::Dispatcher& main_thread_dispatcher,
+                     Server::SecretManager& secret_manager);
+
+  bool updateClusters() override;
 
   // Upstream::ClusterManager
   bool addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) override;
@@ -295,6 +299,36 @@ private:
   typedef std::unique_ptr<ClusterData> ClusterDataPtr;
   typedef std::unordered_map<std::string, ClusterDataPtr> ClusterMap;
 
+  class ClusterCreationInfo {
+   public:
+    ClusterCreationInfo(const envoy::api::v2::Cluster& config,
+                         const std::vector<std::pair<std::string, bool>> sds_secrets)
+        : config_([&config] {
+            envoy::api::v2::Cluster cfg;
+            cfg.CopyFrom(config);
+            return cfg;
+          }()),
+          sds_secrets_(sds_secrets) {
+    }
+
+    virtual ~ClusterCreationInfo() {
+    }
+
+    const envoy::api::v2::Cluster& getConfig() {
+      return config_;
+    }
+
+    const std::vector<std::pair<std::string, bool>>& getSdsSecrets() {
+      return sds_secrets_;
+    }
+
+   private:
+    const envoy::api::v2::Cluster config_;
+    const std::vector<std::pair<std::string, bool>> sds_secrets_;
+  };
+
+  typedef std::unique_ptr<ClusterCreationInfo> ClusterCreationInfoPtr;
+
   void createOrUpdateThreadLocalCluster(ClusterData& cluster);
   static ClusterManagerStats generateStats(Stats::Scope& scope);
   void loadCluster(const envoy::api::v2::Cluster& cluster, bool added_via_api,
@@ -326,7 +360,17 @@ private:
   // The name of the local cluster of this Envoy instance if defined, else the empty string.
   std::string local_cluster_name_;
   Grpc::AsyncClientManagerPtr async_client_manager_;
+  Server::SecretManager& secret_manager_;
+
+  // If all required information are not ready, creation request will be added
+  // to the pending_creation_listener_
+  std::unordered_map<std::string, std::unique_ptr<ClusterCreationInfo>> pending_creation_clusters_;
 };
+
+
+
+
+
 
 } // namespace Upstream
 } // namespace Envoy

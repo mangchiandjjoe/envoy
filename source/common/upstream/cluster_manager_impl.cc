@@ -168,10 +168,12 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
                                        Runtime::RandomGenerator& random,
                                        const LocalInfo::LocalInfo& local_info,
                                        AccessLog::AccessLogManager& log_manager,
-                                       Event::Dispatcher& main_thread_dispatcher)
+                                       Event::Dispatcher& main_thread_dispatcher,
+                                       Server::SecretManager& secret_manager)
     : factory_(factory), runtime_(runtime), stats_(stats), tls_(tls.allocateSlot()),
       random_(random), local_info_(local_info), cm_stats_(generateStats(stats)),
-      init_helper_([this](Cluster& cluster) { onClusterInit(cluster); }) {
+      init_helper_([this](Cluster& cluster) { onClusterInit(cluster); }),
+      secret_manager_(secret_manager) {
   async_client_manager_ = std::make_unique<Grpc::AsyncClientManagerImpl>(*this, tls);
   const auto& cm_config = bootstrap.cluster_manager();
   if (cm_config.has_outlier_detection()) {
@@ -338,7 +340,88 @@ void ClusterManagerImpl::onClusterInit(Cluster& cluster) {
   }
 }
 
+bool ClusterManagerImpl::updateClusters() {
+  std::vector<std::string> created_clusters;
+
+  for (const auto& info : pending_creation_clusters_) {
+    bool is_ready_to_create = true;
+
+    for (auto item : info.second->getSdsSecrets()) {
+      if (this->secret_manager_.getSecret(item.first, item.second) == nullptr) {
+        is_ready_to_create = false;
+        break;
+      }
+    }
+
+    if (is_ready_to_create) {
+      ENVOY_LOG(info, "All required SDS secrets were downloaded. creating cluster: ", info.first);
+      try {
+        addOrUpdateCluster(info.second->getConfig());
+        created_clusters.push_back(info.first);
+      } catch (EnvoyException& e) {
+        ENVOY_LOG(info, "failed to create a cluster: {}", info.second->getConfig().name());
+      }
+    }
+  }
+
+  // removed completed from pending_creation_clusters_
+  for (std::string name : created_clusters) {
+    pending_creation_clusters_.erase(name);
+  }
+
+  /*
+  // Update secrets for warming_clusters_
+  for(auto& cluster: warming_clusters_) {
+    // std::cout << __FILE__ << ":" << __LINE__ << " warming: " << cluster.first << std::endl;
+  }
+
+  // Update secrets for active_clusters_
+  for(auto& cluster: active_clusters_) {
+    // std::cout << __FILE__ << ":" << __LINE__ << " active: " << cluster.first << std::endl;
+  }
+  */
+
+  return true;
+}
+
+
 bool ClusterManagerImpl::addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) {
+  if(cluster.has_tls_context() && cluster.tls_context().has_common_tls_context()) {
+    std::vector<std::pair<std::string, bool>> sds_secret_names;
+    for (auto sds_secret_config : cluster.tls_context().common_tls_context()
+        .tls_certificate_sds_secret_configs()) {
+      if (sds_secret_config.has_sds_config()) {
+        secret_manager_.registerSdsConfigSource(sds_secret_config.sds_config());
+      }
+      sds_secret_names.push_back(
+          {sds_secret_config.name(), !sds_secret_config.has_sds_config()});
+    }
+
+    // Check all required SDS secrets were downloaded
+    bool sds_secret_required = false;
+    for (const auto& sds_secret : sds_secret_names) {
+      if (secret_manager_.getSecret(sds_secret.first, sds_secret.second) == nullptr) {
+        sds_secret_required = true;
+        break;
+      }
+    }
+
+    // If some or all secrets were not downloaded yet, then suspend the listener
+    // creation after all secrets were downloaded.
+    if (sds_secret_required) {
+      // Add or update listener when all related sds secrets were arrived
+      ClusterCreationInfoPtr info(new ClusterCreationInfo(cluster, sds_secret_names));
+      pending_creation_clusters_[cluster.name()] = std::move(info);
+
+      ENVOY_LOG(
+          info,
+          "required sds secrets are not ready yet. adding to pending cluster creation list. {}",
+          cluster.DebugString());
+
+      return true;
+    }
+  }
+
   // First we need to see if this new config is new or an update to an existing dynamic cluster.
   // We don't allow updates to statically configured clusters in the main configuration. We check
   // both the warming clusters and the active clusters to see if we need an update or the update
@@ -840,10 +923,12 @@ ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::connPool(
 ClusterManagerPtr ProdClusterManagerFactory::clusterManagerFromProto(
     const envoy::config::bootstrap::v2::Bootstrap& bootstrap, Stats::Store& stats,
     ThreadLocal::Instance& tls, Runtime::Loader& runtime, Runtime::RandomGenerator& random,
-    const LocalInfo::LocalInfo& local_info, AccessLog::AccessLogManager& log_manager) {
+    const LocalInfo::LocalInfo& local_info, AccessLog::AccessLogManager& log_manager,
+    Server::SecretManager& secret_manager) {
   return ClusterManagerPtr{new ClusterManagerImpl(bootstrap, *this, stats, tls, runtime, random,
                                                   local_info, log_manager,
-                                                  main_thread_dispatcher_)};
+                                                  main_thread_dispatcher_,
+                                                  secret_manager)};
 }
 
 Http::ConnectionPool::InstancePtr ProdClusterManagerFactory::allocateConnPool(

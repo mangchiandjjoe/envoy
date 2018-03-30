@@ -10,7 +10,13 @@ namespace Ssl {
 class SecretImpl : public Secret {
  public:
   SecretImpl(const std::string& certificate_chain,
-             const std::string& private_key);
+             const std::string& private_key, bool is_static);
+
+  SecretImpl(const std::string& certificate_chain,
+             const std::string& private_key)
+      : SecretImpl(certificate_chain, private_key, false) {
+
+  }
 
   virtual ~SecretImpl() {
   }
@@ -23,10 +29,15 @@ class SecretImpl : public Secret {
     return private_key_;
   }
 
+  bool isStatic() override {
+    return is_static_;
+  }
+
  private:
   std::string name_;
   std::string certificate_chain_;
   std::string private_key_;
+  bool is_static_;
 };
 
 }  // namespace Upstream

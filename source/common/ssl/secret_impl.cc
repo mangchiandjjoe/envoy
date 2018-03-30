@@ -16,9 +16,10 @@ namespace Envoy {
 namespace Ssl {
 
 SecretImpl::SecretImpl(const std::string& certificate_chain,
-                       const std::string& private_key)
+                       const std::string& private_key, bool is_static)
     : certificate_chain_(certificate_chain),
-      private_key_(private_key) {
+      private_key_(private_key),
+      is_static_(is_static) {
 
 }
 
