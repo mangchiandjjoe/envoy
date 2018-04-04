@@ -6,6 +6,7 @@
 #include "envoy/server/listener_manager.h"
 #include "envoy/server/transport_socket_config.h"
 #include "envoy/server/worker.h"
+#include "envoy/network/transport_socket.h"
 
 #include "common/common/logger.h"
 
@@ -140,7 +141,7 @@ public:
   void stopListeners() override;
   void stopWorkers() override;
 
-  bool updateListeners() override;
+  bool sdsSecretUpdated(const std::string sds_name) override;
 
   Instance& server_;
   ListenerComponentFactory& factory_;
@@ -203,6 +204,61 @@ private:
   bool workers_started_{};
   ListenerManagerStats stats_;
 };
+
+class TransportSocketFactoryInfo {
+ public:
+  TransportSocketFactoryInfo(int socket_factory_index, const std::string& listener_name,
+                             const std::vector<std::string>& server_names,
+                             bool skip_ssl_context_update,
+                             const envoy::api::v2::core::TransportSocket& config,
+                             std::set<std::string> sds_name)
+      : socket_factory_index_(socket_factory_index),
+        listener_name_(listener_name),
+        server_names_(server_names),
+        skip_ssl_context_update_(skip_ssl_context_update),
+        config_([&config] {
+          envoy::api::v2::core::TransportSocket cfg;
+          cfg.CopyFrom(config);
+          return cfg;
+        }()),
+        sds_name_(sds_name) {
+  }
+
+  bool checkRelated(const std::string sds_name) {
+    return sds_name_.find(sds_name) != sds_name_.end();
+  }
+
+  const std::string& getName() {
+    return listener_name_;
+  }
+
+  const std::vector<std::string>& getServerNames() {
+    return server_names_;
+  }
+
+  const envoy::api::v2::core::TransportSocket getConfig() {
+    return config_;
+  }
+
+  bool getSkipSslContextUpdate() {
+    return skip_ssl_context_update_;
+  }
+
+  int getSocketFactoryIndex() {
+    return socket_factory_index_;
+  }
+
+ private:
+  const int socket_factory_index_;
+  const std::string& listener_name_;
+  const std::vector<std::string> server_names_;
+  bool skip_ssl_context_update_;
+  const envoy::api::v2::core::TransportSocket config_;
+  const std::set<std::string> sds_name_;
+};
+
+typedef std::unique_ptr<TransportSocketFactoryInfo> TransportSocketFactoryInfoPtr;
+
 
 // TODO(mattklein123): Consider getting rid of pre-worker start and post-worker start code by
 //                     initializing all listeners after workers are started.
@@ -306,6 +362,8 @@ public:
   Ssl::ContextManager& sslContextManager() override { return parent_.server_.sslContextManager(); }
   Stats::Scope& statsScope() const override { return *listener_scope_; }
 
+  bool refreshTransportSocketFactory(const std::string sds_name);
+
 private:
   Instance& server_;
 
@@ -316,6 +374,7 @@ private:
   Stats::ScopePtr listener_scope_; // Stats with listener named scope.
   std::vector<Ssl::ServerContextPtr> tls_contexts_;
   std::vector<Network::TransportSocketFactoryPtr> transport_socket_factories_;
+  std::vector<TransportSocketFactoryInfoPtr> transport_socket_factories_infos_;
   const bool bind_to_port_;
   const bool hand_off_restored_destination_connections_;
   const uint32_t per_connection_buffer_limit_bytes_;

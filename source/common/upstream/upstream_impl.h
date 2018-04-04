@@ -10,6 +10,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <set>
 
 #include "envoy/api/v2/core/base.pb.h"
 #include "envoy/event/timer.h"
@@ -337,6 +338,7 @@ public:
 
   // Server::Configuration::TransportSocketFactoryContext
   Ssl::ContextManager& sslContextManager() override { return ssl_context_manager_; }
+  bool refreshTransportSocketFactory(const std::string& sds_name) override;
 
 private:
   struct ResourceManagers {
@@ -377,6 +379,8 @@ private:
   const envoy::api::v2::core::Metadata metadata_;
   const envoy::api::v2::Cluster::CommonLbConfig common_lb_config_;
   Server::SecretManager& secret_manager_;
+  const envoy::api::v2::core::TransportSocket transport_socker_;
+  const std::set<std::string> sds_names_;
 };
 
 /**
@@ -417,6 +421,7 @@ public:
   Outlier::Detector* outlierDetector() override { return outlier_detector_.get(); }
   const Outlier::Detector* outlierDetector() const override { return outlier_detector_.get(); }
   void initialize(std::function<void()> callback) override;
+  bool sdsSecretUpdated(const std::string& sds_name) override;
 
 protected:
   ClusterImplBase(const envoy::api::v2::Cluster& cluster,

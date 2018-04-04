@@ -45,8 +45,7 @@ class SecretManager {
    * @return true if the action results in an add/update of a secret.
    */
   virtual bool addOrUpdateSecret(
-      const envoy::api::v2::auth::Secret& secret) PURE;
-
+      const envoy::api::v2::auth::Secret& secret, bool is_static) PURE;
 
   /**
    *

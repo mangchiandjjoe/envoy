@@ -30,9 +30,7 @@ class SecretManager {
 
   virtual bool removeSecret(const std::string& name) PURE;
 
-  virtual bool registerSdsConfigSource(const envoy::api::v2::core::ConfigSource& config_source) PURE;
-
-  virtual bool registerSdsTransportSorcketFactory(const std::string name, Network::TransportSocketFactory* transportSocketFactory) PURE;
+  virtual bool addOrUpdateSdsConfigSource(const envoy::api::v2::core::ConfigSource& config_source) PURE;
 
 };
 

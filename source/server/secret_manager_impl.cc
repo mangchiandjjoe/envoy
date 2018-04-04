@@ -16,54 +16,45 @@
 #include "common/config/tls_context_json.h"
 #include "common/filesystem/filesystem_impl.h"
 #include "common/protobuf/utility.h"
+#include "common/common/logger.h"
 
 namespace Envoy {
 namespace Server {
 
-SecretManagerImpl::SecretManagerImpl(
-    Instance& server, envoy::config::bootstrap::v2::SecretManager config)
+SecretManagerImpl::SecretManagerImpl(Instance& server,
+                                     envoy::config::bootstrap::v2::SecretManager config)
     : server_(server),
       config_(config) {
 }
 
-bool SecretManagerImpl::registerSdsConfigSource(const envoy::api::v2::core::ConfigSource& sds_config) {
-  std::unique_ptr<SdsApi> sds_api(new SdsApi(
-      server_,
-      sds_config,
-      *this));
+bool SecretManagerImpl::addOrUpdateSdsConfigSource(
+    const envoy::api::v2::core::ConfigSource& sds_config) {
+  std::size_t hash = MessageUtil::hash(sds_config);
+  if (sds_apis_.find(hash) != sds_apis_.end()) {
+    return true;
+  }
 
-  sds_apis_.push_back(std::move(sds_api));
-
-  return true;
-}
-
-bool SecretManagerImpl::registerSdsTransportSorcketFactory(
-    const std::string name,
-    Network::TransportSocketFactory* transportSocketFactory) {
-
-  std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
-
-  sds_transport_sorcket_factory_[name] = transportSocketFactory;
+  std::unique_ptr<SdsApi> sds_api(new SdsApi(server_, sds_config, *this));
+  sds_apis_[hash] = std::move(sds_api);
 
   return true;
 }
 
-
-bool SecretManagerImpl::addOrUpdateSecret(
-    const envoy::api::v2::auth::Secret& config, bool is_static) {
+bool SecretManagerImpl::addOrUpdateSecret(const envoy::api::v2::auth::Secret& config,
+                                          bool is_static) {
   std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
 
   if (config.has_tls_certificate()) {
-    std::string certificate_chain = readDataSource(
-        config.tls_certificate().certificate_chain(), true);
-    std::string private_key = readDataSource(
-        config.tls_certificate().private_key(), true);
+    std::string certificate_chain = readDataSource(config.tls_certificate().certificate_chain(),
+                                                   true);
+    std::string private_key = readDataSource(config.tls_certificate().private_key(), true);
 
     secrets_[config.name()] = std::make_shared<Ssl::SecretImpl>(
         Ssl::SecretImpl(certificate_chain, private_key, is_static));
 
-    if(&server_.clusterManager() != nullptr && &server_.listenerManager() != nullptr) {
-      if(!server_.clusterManager().updateClusters() || !server_.listenerManager().updateListeners()) {
+    if (&server_.clusterManager() != nullptr && &server_.listenerManager() != nullptr) {
+      if (!server_.clusterManager().sdsSecretUpdated(config.name())
+          || !server_.listenerManager().sdsSecretUpdated(config.name())) {
         // TODO (jaebong) secret was not completely initialized. Need to try it again.
       }
     }
@@ -99,19 +90,18 @@ bool SecretManagerImpl::removeSecret(const std::string& name) {
   return false;
 }
 
-std::shared_ptr<Ssl::Secret> SecretManagerImpl::getSecret(
-    const std::string& name, bool is_static) {
+std::shared_ptr<Ssl::Secret> SecretManagerImpl::getSecret(const std::string& name, bool is_static) {
   // std::shared_lock < std::shared_timed_mutex > rhs(mutex_);
 
   if (secrets_.find(name) != secrets_.end()) {
-    return secrets_[name]->isStatic() == is_static ? secrets_[name]: nullptr;
+    return secrets_[name]->isStatic() == is_static ? secrets_[name] : nullptr;
   }
 
   return nullptr;
 }
 
-const std::string SecretManagerImpl::readDataSource(
-    const envoy::api::v2::core::DataSource& source, bool allow_empty) {
+const std::string SecretManagerImpl::readDataSource(const envoy::api::v2::core::DataSource& source,
+                                                    bool allow_empty) {
   switch (source.specifier_case()) {
     case envoy::api::v2::core::DataSource::kFilename:
       return Filesystem::fileReadToEnd(source.filename());
@@ -122,8 +112,7 @@ const std::string SecretManagerImpl::readDataSource(
     default:
       if (!allow_empty) {
         throw EnvoyException(
-            fmt::format("Unexpected DataSource::specifier_case(): {}",
-                        source.specifier_case()));
+            fmt::format("Unexpected DataSource::specifier_case(): {}", source.specifier_case()));
       }
       return "";
   }

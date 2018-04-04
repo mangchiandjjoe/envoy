@@ -41,7 +41,7 @@ public:
    */
   virtual bool addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) PURE;
 
-  virtual bool updateClusters() PURE;
+  virtual bool sdsSecretUpdated(const std::string sds_name) PURE;
 
   /**
    * Set a callback that will be invoked when all owned clusters have been initialized.

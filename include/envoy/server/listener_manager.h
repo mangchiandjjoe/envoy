@@ -85,7 +85,7 @@ public:
    */
   virtual bool addOrUpdateListener(const envoy::api::v2::Listener& config, bool modifiable) PURE;
 
-  virtual bool updateListeners() PURE;
+  virtual bool sdsSecretUpdated(const std::string sds_name) PURE;
 
   /**
    * @return std::vector<std::reference_wrapper<Network::ListenerConfig>> a list of the currently

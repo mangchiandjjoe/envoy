@@ -485,9 +485,14 @@ public:
    * @return const envoy::api::v2::core::Metadata& the configuration metadata for this cluster.
    */
   virtual const envoy::api::v2::core::Metadata& metadata() const PURE;
+
+  /**
+   * @return
+   */
+  virtual bool refreshTransportSocketFactory(const std::string& sds_name) PURE;
 };
 
-typedef std::shared_ptr<const ClusterInfo> ClusterInfoConstSharedPtr;
+typedef std::shared_ptr<ClusterInfo> ClusterInfoConstSharedPtr;
 
 class HealthChecker;
 
@@ -544,6 +549,8 @@ public:
    * @return the const PrioritySet for the cluster.
    */
   virtual const PrioritySet& prioritySet() const PURE;
+
+  virtual bool sdsSecretUpdated(const std::string& sds_name) PURE;
 };
 
 typedef std::shared_ptr<Cluster> ClusterSharedPtr;

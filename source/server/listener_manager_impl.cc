@@ -171,6 +171,8 @@ ListenerImpl::ListenerImpl(Instance& server, const envoy::api::v2::Listener& con
                                        address_->asString()));
     }
 
+    // dynamic sds secret config names
+    std::set<std::string> sds_secret_config_names;
     // If the cluster doesn't have transport socke configured, override with default transport
     // socket implementation based on tls_context. We copy by value first then override if
     // neccessary.
@@ -179,6 +181,15 @@ ListenerImpl::ListenerImpl(Instance& server, const envoy::api::v2::Listener& con
       if (filter_chain.has_tls_context()) {
         transport_socket.set_name(Config::TransportSocketNames::get().SSL);
         MessageUtil::jsonConvert(filter_chain.tls_context(), *transport_socket.mutable_config());
+
+        if (filter_chain.tls_context().has_common_tls_context()) {
+          for (auto sds_secret_configs : filter_chain.tls_context().common_tls_context()
+              .tls_certificate_sds_secret_configs()) {
+            if (sds_secret_configs.has_sds_config()) {
+              sds_secret_config_names.insert(sds_secret_configs.name());
+            }
+          }
+        }
 
         has_tls++;
         if (filter_chain.tls_context().has_session_ticket_keys()) {
@@ -203,6 +214,14 @@ ListenerImpl::ListenerImpl(Instance& server, const envoy::api::v2::Listener& con
     transport_socket_factories_.emplace_back(config_factory.createTransportSocketFactory(
         name_, sni_domains, skip_context_update, *message, *this, server_.secretManager()));
     ASSERT(transport_socket_factories_.back() != nullptr);
+
+    if (sds_secret_config_names.size() > 0) {
+      std::unique_ptr<TransportSocketFactoryInfo> info(
+          new TransportSocketFactoryInfo(transport_socket_factories_.size() - 1, name_, sni_domains,
+                                         skip_context_update, transport_socket,
+                                         sds_secret_config_names));
+      transport_socket_factories_infos_.emplace_back(std::move(info));
+    }
   }
   ASSERT(!transport_socket_factories_.empty());
 
@@ -261,6 +280,27 @@ void ListenerImpl::initialize() {
   }
 }
 
+bool ListenerImpl::refreshTransportSocketFactory(const std::string sds_name) {
+  for (auto& info : transport_socket_factories_infos_) {
+    // check the updated sds_secret_config_name is associated
+    if (info->checkRelated(sds_name)) {
+      ENVOY_LOG(info, "secrets for {} has updated. reloading the secret", sds_name);
+
+      auto& config_factory = Config::Utility::getAndCheckFactory<
+          Server::Configuration::DownstreamTransportSocketConfigFactory>(info->getConfig().name());
+
+      // TODO (jaebong) transport_socket_factories_ must be protected
+      transport_socket_factories_[info->getSocketFactoryIndex()] = config_factory
+          .createTransportSocketFactory(
+          info->getName(), info->getServerNames(), info->getSkipSslContextUpdate(),
+          *Config::Utility::translateToFactoryConfig(info->getConfig(), config_factory), *this,
+          server_.secretManager());
+    }
+  }
+
+  return true;
+}
+
 Init::Manager& ListenerImpl::initManager() {
   // See initialize() for why we choose different init managers to return.
   if (workers_started_) {
@@ -302,7 +342,7 @@ ListenerManagerStats ListenerManagerImpl::generateStats(Stats::Scope& scope) {
                                      POOL_GAUGE_PREFIX(scope, final_prefix))};
 }
 
-bool ListenerManagerImpl::updateListeners() {
+bool ListenerManagerImpl::sdsSecretUpdated(const std::string sds_name) {
   std::vector<uint64_t> created_listener_hashes;
 
   for (const auto& info : pending_creation_listeners_) {
@@ -337,12 +377,12 @@ bool ListenerManagerImpl::updateListeners() {
 
   // Update secrets for warming_listeners_
   for(ListenerImplPtr& listner: warming_listeners_) {
-    std::cout << __FILE__ << ":" << __LINE__ << " warming: " << listner->address() << std::endl;
+    listner->refreshTransportSocketFactory(sds_name);
   }
 
   // Update secrets for active_listeners_
   for(ListenerImplPtr& listner: active_listeners_) {
-    std::cout << __FILE__ << ":" << __LINE__ << " active: " << listner->address() << std::endl;
+    listner->refreshTransportSocketFactory(sds_name);
   }
 
   return true;
@@ -369,7 +409,7 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
         // Register sds_config to the SecretManager. SecretManager starts
         // downloading secrets from SDS server.
         if (sds_secrets_config.has_sds_config()) {
-          this->server_.secretManager().registerSdsConfigSource(
+          this->server_.secretManager().addOrUpdateSdsConfigSource(
               sds_secrets_config.sds_config());
         }
 

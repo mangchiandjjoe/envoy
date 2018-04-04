@@ -160,7 +160,7 @@ public:
                      Event::Dispatcher& main_thread_dispatcher,
                      Server::SecretManager& secret_manager);
 
-  bool updateClusters() override;
+  bool sdsSecretUpdated(const std::string sds_name) override;
 
   // Upstream::ClusterManager
   bool addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) override;

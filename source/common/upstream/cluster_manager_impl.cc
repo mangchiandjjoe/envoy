@@ -340,7 +340,7 @@ void ClusterManagerImpl::onClusterInit(Cluster& cluster) {
   }
 }
 
-bool ClusterManagerImpl::updateClusters() {
+bool ClusterManagerImpl::sdsSecretUpdated(const std::string sds_name) {
   std::vector<std::string> created_clusters;
 
   for (const auto& info : pending_creation_clusters_) {
@@ -369,21 +369,18 @@ bool ClusterManagerImpl::updateClusters() {
     pending_creation_clusters_.erase(name);
   }
 
-  /*
   // Update secrets for warming_clusters_
   for(auto& cluster: warming_clusters_) {
-    // std::cout << __FILE__ << ":" << __LINE__ << " warming: " << cluster.first << std::endl;
+    cluster.second->cluster_->sdsSecretUpdated(sds_name);
   }
 
   // Update secrets for active_clusters_
   for(auto& cluster: active_clusters_) {
-    // std::cout << __FILE__ << ":" << __LINE__ << " active: " << cluster.first << std::endl;
+    cluster.second->cluster_->sdsSecretUpdated(sds_name);
   }
-  */
 
   return true;
 }
-
 
 bool ClusterManagerImpl::addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) {
   if(cluster.has_tls_context() && cluster.tls_context().has_common_tls_context()) {
@@ -391,7 +388,7 @@ bool ClusterManagerImpl::addOrUpdateCluster(const envoy::api::v2::Cluster& clust
     for (auto sds_secret_config : cluster.tls_context().common_tls_context()
         .tls_certificate_sds_secret_configs()) {
       if (sds_secret_config.has_sds_config()) {
-        secret_manager_.registerSdsConfigSource(sds_secret_config.sds_config());
+        secret_manager_.addOrUpdateSdsConfigSource(sds_secret_config.sds_config());
       }
       sds_secret_names.push_back(
           {sds_secret_config.name(), !sds_secret_config.has_sds_config()});
@@ -459,6 +456,7 @@ bool ClusterManagerImpl::addOrUpdateCluster(const envoy::api::v2::Cluster& clust
   //       and easy to understand.
   const bool use_active_map =
       init_helper_.state() != ClusterManagerInitHelper::State::AllClustersInitialized;
+
   loadCluster(cluster, true, use_active_map ? active_clusters_ : warming_clusters_);
 
   if (use_active_map) {

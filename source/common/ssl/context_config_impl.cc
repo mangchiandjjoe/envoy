@@ -70,7 +70,7 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           // TODO(jaebong) Does SDS secret config need to be multiple?
           if(config.tls_certificate_sds_secret_configs()[0].has_sds_config()) {
             // register SDS ConfigSource to the SecretManager
-            secret_manager.registerSdsConfigSource(config.tls_certificate_sds_secret_configs()[0].sds_config());
+            secret_manager.addOrUpdateSdsConfigSource(config.tls_certificate_sds_secret_configs()[0].sds_config());
           }
           return config.tls_certificate_sds_secret_configs()[0].name().c_str();
         }

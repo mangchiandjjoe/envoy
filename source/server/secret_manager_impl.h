@@ -32,12 +32,9 @@ class SecretManagerImpl : public SecretManager {
 
   bool removeSecret(const std::string& name) override;
 
-  bool registerSdsConfigSource(
+  bool addOrUpdateSdsConfigSource(
       const envoy::api::v2::core::ConfigSource& config_source) override;
 
-  bool registerSdsTransportSorcketFactory(
-      const std::string name,
-      Network::TransportSocketFactory* transportSocketFactory) override;
 
  private:
   const std::string readDataSource(
@@ -50,9 +47,7 @@ class SecretManagerImpl : public SecretManager {
   Instance& server_;
   SecretInfoMap secrets_;
   envoy::config::bootstrap::v2::SecretManager config_;
-
-  std::vector<std::unique_ptr<SdsApi>> sds_apis_;
-  std::unordered_map<std::string, Network::TransportSocketFactory*> sds_transport_sorcket_factory_;
+  std::unordered_map<std::size_t, std::unique_ptr<SdsApi>> sds_apis_;
 
  private:
   mutable std::shared_timed_mutex mutex_;
