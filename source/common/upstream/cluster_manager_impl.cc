@@ -340,7 +340,7 @@ void ClusterManagerImpl::onClusterInit(Cluster& cluster) {
   }
 }
 
-bool ClusterManagerImpl::sdsSecretUpdated(const std::string sds_name) {
+bool ClusterManagerImpl::sdsSecretUpdated(const std::string sds_secret_name) {
   std::vector<std::string> created_clusters;
 
   for (const auto& info : pending_creation_clusters_) {
@@ -371,12 +371,12 @@ bool ClusterManagerImpl::sdsSecretUpdated(const std::string sds_name) {
 
   // Update secrets for warming_clusters_
   for(auto& cluster: warming_clusters_) {
-    cluster.second->cluster_->sdsSecretUpdated(sds_name);
+    cluster.second->cluster_->sdsSecretUpdated(sds_secret_name);
   }
 
   // Update secrets for active_clusters_
   for(auto& cluster: active_clusters_) {
-    cluster.second->cluster_->sdsSecretUpdated(sds_name);
+    cluster.second->cluster_->sdsSecretUpdated(sds_secret_name);
   }
 
   return true;

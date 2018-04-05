@@ -160,7 +160,13 @@ public:
                      Event::Dispatcher& main_thread_dispatcher,
                      Server::SecretManager& secret_manager);
 
-  bool sdsSecretUpdated(const std::string sds_name) override;
+  /**
+   * Handles update sds secret
+   *
+   * @param sds_secret_name name of the sds secret stored in the secret manager
+   * @return TRUE if the cluster successfully refreshed the transport socket factory instance
+   */
+  bool sdsSecretUpdated(const std::string sds_secret_name) override;
 
   // Upstream::ClusterManager
   bool addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) override;

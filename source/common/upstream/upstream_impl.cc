@@ -151,18 +151,18 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
           }
           return transport_socket;
         }()),
-      sds_names_([&config] {
+        sds_secret_names_([&config] {
         // collect dynamic SdsSecretConfig names
-          std::set<std::string> sds_names;
+          std::set<std::string> sds_secret_names;
           if (config.has_tls_context() && config.tls_context().has_common_tls_context()) {
             for (auto sds_secret_configs : config.tls_context().common_tls_context()
                 .tls_certificate_sds_secret_configs()) {
               if (sds_secret_configs.has_sds_config()) {
-                sds_names.insert(sds_secret_configs.name());
+                sds_secret_names.insert(sds_secret_configs.name());
               }
             }
           }
-          return sds_names;
+          return sds_secret_names;
         }()) {
 
   // If the cluster doesn't have a transport socket configured, override with the default transport
@@ -211,9 +211,9 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
   }
 }
 
-// Refresh the TransportSocketFactory instance if sds_name is in dynamic SDS configuration
-bool ClusterInfoImpl::refreshTransportSocketFactory(const std::string& sds_name) {
-  if (sds_names_.find(sds_name) != sds_names_.end()) {
+// Refresh the TransportSocketFactory instance if sds_secret_name is in dynamic SDS configuration
+bool ClusterInfoImpl::refreshTransportSocketFactory(const std::string& sds_secret_name) {
+  if (sds_secret_names_.find(sds_secret_name) != sds_secret_names_.end()) {
     auto& config_factory = Config::Utility::getAndCheckFactory<
         Server::Configuration::UpstreamTransportSocketConfigFactory>(transport_socker_.name());
 
@@ -373,8 +373,8 @@ ResourceManager& ClusterInfoImpl::resourceManager(ResourcePriority priority) con
   return *resource_managers_.managers_[enumToInt(priority)];
 }
 
-bool ClusterImplBase::sdsSecretUpdated(const std::string& sds_name) {
-  return info_->refreshTransportSocketFactory(sds_name);
+bool ClusterImplBase::sdsSecretUpdated(const std::string& sds_secret_name) {
+  return info_->refreshTransportSocketFactory(sds_secret_name);
 }
 
 void ClusterImplBase::initialize(std::function<void()> callback) {

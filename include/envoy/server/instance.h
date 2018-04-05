@@ -114,9 +114,10 @@ public:
    */
   virtual ListenerManager& listenerManager() PURE;
 
-
+  /**
+   * @return the server's secret manager
+   */
   virtual SecretManager& secretManager() PURE;
-
 
   /**
    * @return the server's CLI options.

@@ -280,11 +280,11 @@ void ListenerImpl::initialize() {
   }
 }
 
-bool ListenerImpl::refreshTransportSocketFactory(const std::string sds_name) {
+bool ListenerImpl::refreshTransportSocketFactory(const std::string sds_secret_name) {
   for (auto& info : transport_socket_factories_infos_) {
     // check the updated sds_secret_config_name is associated
-    if (info->checkRelated(sds_name)) {
-      ENVOY_LOG(info, "secrets for {} has updated. reloading the secret", sds_name);
+    if (info->checkRelated(sds_secret_name)) {
+      ENVOY_LOG(info, "secrets for {} has updated. reloading the secret", sds_secret_name);
 
       auto& config_factory = Config::Utility::getAndCheckFactory<
           Server::Configuration::DownstreamTransportSocketConfigFactory>(info->getConfig().name());
@@ -342,7 +342,7 @@ ListenerManagerStats ListenerManagerImpl::generateStats(Stats::Scope& scope) {
                                      POOL_GAUGE_PREFIX(scope, final_prefix))};
 }
 
-bool ListenerManagerImpl::sdsSecretUpdated(const std::string sds_name) {
+bool ListenerManagerImpl::sdsSecretUpdated(const std::string sds_secret_name) {
   std::vector<uint64_t> created_listener_hashes;
 
   for (const auto& info : pending_creation_listeners_) {
@@ -377,12 +377,12 @@ bool ListenerManagerImpl::sdsSecretUpdated(const std::string sds_name) {
 
   // Update secrets for warming_listeners_
   for(ListenerImplPtr& listner: warming_listeners_) {
-    listner->refreshTransportSocketFactory(sds_name);
+    listner->refreshTransportSocketFactory(sds_secret_name);
   }
 
   // Update secrets for active_listeners_
   for(ListenerImplPtr& listner: active_listeners_) {
-    listner->refreshTransportSocketFactory(sds_name);
+    listner->refreshTransportSocketFactory(sds_secret_name);
   }
 
   return true;

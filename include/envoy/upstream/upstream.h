@@ -487,9 +487,12 @@ public:
   virtual const envoy::api::v2::core::Metadata& metadata() const PURE;
 
   /**
-   * @return
+   * Refresh the transport socket factory instance if the cluster is using the given SDS secret
+   *
+   * @param sds_secret_name name of the sds secret stored in the secret manager
+   * @return TRUE if the cluster successfully refreshed the transport socket factory instance
    */
-  virtual bool refreshTransportSocketFactory(const std::string& sds_name) PURE;
+  virtual bool refreshTransportSocketFactory(const std::string& sds_secret_name) PURE;
 };
 
 typedef std::shared_ptr<ClusterInfo> ClusterInfoConstSharedPtr;
@@ -550,7 +553,13 @@ public:
    */
   virtual const PrioritySet& prioritySet() const PURE;
 
-  virtual bool sdsSecretUpdated(const std::string& sds_name) PURE;
+  /**
+   * Handles updated sds secret
+   *
+   * @param sds_secret_name name of the sds secret stored in the secret manager
+   * @return TRUE if the cluster successfully refreshed the transport socket factory instance
+   */
+  virtual bool sdsSecretUpdated(const std::string& sds_secret_name) PURE;
 };
 
 typedef std::shared_ptr<Cluster> ClusterSharedPtr;

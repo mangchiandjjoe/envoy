@@ -41,7 +41,17 @@ public:
    */
   virtual bool addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) PURE;
 
-  virtual bool sdsSecretUpdated(const std::string sds_name) PURE;
+  /**
+   * Handles updated sds secret. If any cluster stay in the pending creation list and all required
+   * secrets were downloaded, then create the cluster. If any cluster is using the sds secret
+   * name needs to refresh the transport socket factory instance.
+   *
+   * @param sds_secret_name the name of the updated secret
+   *
+   * @return TRUE if the listener manager successfully handled updated sds secret stored in the
+   *         secret manager
+   */
+virtual bool sdsSecretUpdated(const std::string sds_secret_name) PURE;
 
   /**
    * Set a callback that will be invoked when all owned clusters have been initialized.

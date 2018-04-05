@@ -85,7 +85,17 @@ public:
    */
   virtual bool addOrUpdateListener(const envoy::api::v2::Listener& config, bool modifiable) PURE;
 
-  virtual bool sdsSecretUpdated(const std::string sds_name) PURE;
+  /**
+   * Handles updated sds secret. If any listener stay in the pending creation list and all required
+   * secrets were downloaded, then create the listener. If any listener is using the sds secret
+   * name needs to refresh the transport socket factory instance.
+   *
+   * @param sds_secret_name the name of the updated secret
+   *
+   * @return TRUE if the listener manager successfully handled updated sds secret stored in the
+   *         secret manager
+   */
+  virtual bool sdsSecretUpdated(const std::string sds_secret_name) PURE;
 
   /**
    * @return std::vector<std::reference_wrapper<Network::ListenerConfig>> a list of the currently

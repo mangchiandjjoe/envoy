@@ -140,8 +140,7 @@ public:
   void startWorkers(GuardDog& guard_dog) override;
   void stopListeners() override;
   void stopWorkers() override;
-
-  bool sdsSecretUpdated(const std::string sds_name) override;
+  bool sdsSecretUpdated(const std::string sds_secret_name) override;
 
   Instance& server_;
   ListenerComponentFactory& factory_;
@@ -211,7 +210,7 @@ class TransportSocketFactoryInfo {
                              const std::vector<std::string>& server_names,
                              bool skip_ssl_context_update,
                              const envoy::api::v2::core::TransportSocket& config,
-                             std::set<std::string> sds_name)
+                             std::set<std::string> sds_secret_name)
       : socket_factory_index_(socket_factory_index),
         listener_name_(listener_name),
         server_names_(server_names),
@@ -221,11 +220,11 @@ class TransportSocketFactoryInfo {
           cfg.CopyFrom(config);
           return cfg;
         }()),
-        sds_name_(sds_name) {
+        sds_secret_name_(sds_secret_name) {
   }
 
-  bool checkRelated(const std::string sds_name) {
-    return sds_name_.find(sds_name) != sds_name_.end();
+  bool checkRelated(const std::string sds_secret_name) {
+    return sds_secret_name_.find(sds_secret_name) != sds_secret_name_.end();
   }
 
   const std::string& getName() {
@@ -254,7 +253,7 @@ class TransportSocketFactoryInfo {
   const std::vector<std::string> server_names_;
   bool skip_ssl_context_update_;
   const envoy::api::v2::core::TransportSocket config_;
-  const std::set<std::string> sds_name_;
+  const std::set<std::string> sds_secret_name_;
 };
 
 typedef std::unique_ptr<TransportSocketFactoryInfo> TransportSocketFactoryInfoPtr;
@@ -362,7 +361,7 @@ public:
   Ssl::ContextManager& sslContextManager() override { return parent_.server_.sslContextManager(); }
   Stats::Scope& statsScope() const override { return *listener_scope_; }
 
-  bool refreshTransportSocketFactory(const std::string sds_name);
+  bool refreshTransportSocketFactory(const std::string sds_secret_name);
 
 private:
   Instance& server_;
