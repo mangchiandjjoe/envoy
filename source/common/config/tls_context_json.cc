@@ -1,11 +1,14 @@
 #include "common/config/tls_context_json.h"
 
+#include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/api/v2/auth/cert.pb.validate.h"
+#include "envoy/json/json_object.h"
 
 #include "common/common/utility.h"
 #include "common/config/json_utility.h"
+#include "common/config/utility.h"
 #include "common/protobuf/utility.h"
-#include "common/config/sds_json.h"
+
 
 namespace Envoy {
 namespace Config {
@@ -49,9 +52,8 @@ void TlsContextJson::translateCommonTlsContext(
     for(auto node: json_tls_context.getObjectArray("tls_certificate_sds_secret_configs")) {
       auto sds_secret_configs = common_tls_context.mutable_tls_certificate_sds_secret_configs()->Add();
       sds_secret_configs->set_name(node->getString("name"));
-
       if(node->hasObject("sds_config")) {
-        SdsJson::translateConfigSource(*node->getObject("sds_config"), *sds_secret_configs->mutable_sds_config());
+        translateConfigSource(*node->getObject("sds_config"), *sds_secret_configs->mutable_sds_config());
       }
     }
   }
@@ -92,6 +94,27 @@ void TlsContextJson::translateTlsCertificate(
   if (json_tls_context.hasObject("private_key_file")) {
     tls_certificate.mutable_private_key()->set_filename(
         json_tls_context.getString("private_key_file", ""));
+  }
+}
+
+
+
+void TlsContextJson::translateConfigSource(
+    const Json::Object& json_config_source,
+    envoy::api::v2::core::ConfigSource& config_source) {
+  //json_config_source.validateSchema(Json::Schema::...);
+
+  if (json_config_source.getString("path").length() > 0) {
+    config_source.set_path(json_config_source.getString("path"));
+  } else if (json_config_source.hasObject("api_config_source")) {
+    Utility::translateApiConfigSource(json_config_source.getObject("api_config_source")->getString("name"),
+                             json_config_source.getObject("api_config_source")->getInteger("refresh_delay_ms", 30000),
+                             json_config_source.getObject("api_config_source")->getString("api_type", ApiType::get().RestLegacy),
+                             *config_source.mutable_api_config_source());
+  } else if (json_config_source.getObject("ads")) {
+    // AggregatedConfigSource is empty
+  } else {
+    throw EnvoyException("ConfigSource should be one of path, api_config_source or ads");
   }
 }
 

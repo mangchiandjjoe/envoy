@@ -40,6 +40,10 @@ public:
    */
   static void translateTlsCertificate(const Json::Object& json_tls_context,
                                       envoy::api::v2::auth::TlsCertificate& tls_certificate);
+
+  static void translateConfigSource(const Json::Object& json_config_source,
+                                    envoy::api::v2::core::ConfigSource& config_source);
+
 };
 
 } // namespace Config

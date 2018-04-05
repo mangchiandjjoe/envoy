@@ -40,11 +40,8 @@ public:
       Event::Dispatcher& dispatcher, Upstream::ClusterManager& cm, Runtime::RandomGenerator& random,
       Stats::Scope& scope, std::function<Subscription<ResourceType>*()> rest_legacy_constructor,
       const std::string& rest_method, const std::string& grpc_method) {
-
     std::unique_ptr<Subscription<ResourceType>> result;
-
     SubscriptionStats stats = Utility::generateStats(scope);
-
     switch (config.config_source_specifier_case()) {
     case envoy::api::v2::core::ConfigSource::kPath: {
       Utility::checkFilesystemSubscriptionBackingPath(config.path());
@@ -52,10 +49,8 @@ public:
           new Config::FilesystemSubscriptionImpl<ResourceType>(dispatcher, config.path(), stats));
       break;
     }
-
     case envoy::api::v2::core::ConfigSource::kApiConfigSource: {
       const envoy::api::v2::core::ApiConfigSource& api_config_source = config.api_config_source();
-
       Utility::checkApiConfigSourceSubscriptionBackingCluster(cm.clusters(), api_config_source);
       const std::string& cluster_name = api_config_source.cluster_names()[0];
       switch (api_config_source.api_type()) {
