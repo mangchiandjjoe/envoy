@@ -181,6 +181,11 @@ private:
     Network::TransportSocketFactory& transportSocketFactory() override {
       return parent_.transport_socket_factory_;
     }
+
+    Network::TransportSocketPtr createTransportSocket() const override {
+      return parent_.transport_socket_factory_.createTransportSocket();
+    }
+
     bool bindToPort() override { return true; }
     bool handOffRestoredDestinationConnections() const override { return false; }
     uint32_t perConnectionBufferLimitBytes() override { return 0; }

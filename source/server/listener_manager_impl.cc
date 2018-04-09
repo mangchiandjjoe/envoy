@@ -211,6 +211,7 @@ ListenerImpl::ListenerImpl(Instance& server, const envoy::api::v2::Listener& con
     // factories are needed when the default Ssl::ServerContext updates SSL context based on
     // ClientHello. This behavior is a workaround for initial SNI support before the full SNI based
     // filter chain match is implemented.
+    std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
     transport_socket_factories_.emplace_back(config_factory.createTransportSocketFactory(
         name_, sni_domains, skip_context_update, *message, *this, server_.secretManager()));
     ASSERT(transport_socket_factories_.back() != nullptr);
@@ -281,6 +282,8 @@ void ListenerImpl::initialize() {
 }
 
 bool ListenerImpl::refreshTransportSocketFactory(const std::string sds_secret_name) {
+  bool restart_listener = false;
+
   for (auto& info : transport_socket_factories_infos_) {
     // check the updated sds_secret_config_name is associated
     if (info->checkRelated(sds_secret_name)) {
@@ -289,13 +292,20 @@ bool ListenerImpl::refreshTransportSocketFactory(const std::string sds_secret_na
       auto& config_factory = Config::Utility::getAndCheckFactory<
           Server::Configuration::DownstreamTransportSocketConfigFactory>(info->getConfig().name());
 
-      // TODO (jaebong) transport_socket_factories_ must be protected
+      std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
+      restart_listener = true;
+
       transport_socket_factories_[info->getSocketFactoryIndex()] = config_factory
           .createTransportSocketFactory(
           info->getName(), info->getServerNames(), info->getSkipSslContextUpdate(),
           *Config::Utility::translateToFactoryConfig(info->getConfig(), config_factory), *this,
           server_.secretManager());
     }
+  }
+
+  if(restart_listener) {
+    ENVOY_LOG(info, "listener restarted");
+    // TODO(jaebong) restart the listener
   }
 
   return true;

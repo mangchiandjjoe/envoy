@@ -157,7 +157,7 @@ public:
   virtual TransportSocketPtr createTransportSocket() const PURE;
 };
 
-typedef std::shared_ptr<TransportSocketFactory> TransportSocketFactoryPtr;
+typedef std::unique_ptr<TransportSocketFactory> TransportSocketFactoryPtr;
 
 } // namespace Network
 } // namespace Envoy

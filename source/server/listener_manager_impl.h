@@ -1,5 +1,8 @@
 #pragma once
 
+#include <mutex>
+#include <shared_mutex>
+
 #include "envoy/api/v2/listener/listener.pb.h"
 #include "envoy/server/filter_config.h"
 #include "envoy/server/instance.h"
@@ -319,6 +322,10 @@ public:
   Network::TransportSocketFactory& transportSocketFactory() override {
     return *transport_socket_factories_[0];
   }
+  Network::TransportSocketPtr createTransportSocket() const override {
+    std::shared_lock < std::shared_timed_mutex > rhs(mutex_);
+    return transport_socket_factories_[0]->createTransportSocket();
+  }
   uint32_t perConnectionBufferLimitBytes() override { return per_connection_buffer_limit_bytes_; }
   Stats::Scope& listenerScope() override { return *listener_scope_; }
   uint64_t listenerTag() const override { return listener_tag_; }
@@ -390,7 +397,7 @@ private:
   bool saw_listener_create_failure_{};
   const envoy::api::v2::core::Metadata metadata_;
   Network::Socket::OptionsSharedPtr listen_socket_options_;
-
+  mutable std::shared_timed_mutex mutex_;
 };
 
 } // namespace Server
