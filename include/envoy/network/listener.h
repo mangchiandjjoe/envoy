@@ -38,6 +38,11 @@ public:
   virtual TransportSocketFactory& transportSocketFactory() PURE;
 
   /**
+   * @return Network::TransportSocketPtr a transport socket to be passed to connection.
+   */
+  virtual TransportSocketPtr createTransportSocket() const PURE;
+
+  /**
    * @return bool specifies whether the listener should actually listen on the port.
    *         A listener that doesn't listen on a port can only receive connections
    *         redirected from other listeners.

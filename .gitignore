@@ -13,3 +13,10 @@ BROWSE
 *.pyc
 SOURCE_VERSION
 .cache
+/Debug/
+/Release/
+/.settings/
+/.cproject
+/.project
+/.pydevproject
+/core

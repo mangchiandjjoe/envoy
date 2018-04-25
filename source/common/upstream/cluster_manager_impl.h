@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "envoy/config/bootstrap/v2/bootstrap.pb.h"
 #include "envoy/http/codes.h"
@@ -16,11 +17,14 @@
 #include "envoy/ssl/context_manager.h"
 #include "envoy/thread_local/thread_local.h"
 #include "envoy/upstream/cluster_manager.h"
+#include "envoy/server/secret_manager.h"
 
 #include "common/config/grpc_mux_impl.h"
 #include "common/http/async_client_impl.h"
 #include "common/upstream/load_stats_reporter.h"
 #include "common/upstream/upstream_impl.h"
+
+#include "server/sds_api.h"
 
 namespace Envoy {
 namespace Upstream {
@@ -35,17 +39,20 @@ public:
                             Network::DnsResolverSharedPtr dns_resolver,
                             Ssl::ContextManager& ssl_context_manager,
                             Event::Dispatcher& main_thread_dispatcher,
-                            const LocalInfo::LocalInfo& local_info)
+                            const LocalInfo::LocalInfo& local_info,
+                            Server::SecretManager& secret_manager)
       : main_thread_dispatcher_(main_thread_dispatcher), runtime_(runtime), stats_(stats),
         tls_(tls), random_(random), dns_resolver_(dns_resolver),
-        ssl_context_manager_(ssl_context_manager), local_info_(local_info) {}
+        ssl_context_manager_(ssl_context_manager), local_info_(local_info),
+        secret_manager_(secret_manager) {}
 
   // Upstream::ClusterManagerFactory
   ClusterManagerPtr
   clusterManagerFromProto(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,
                           Stats::Store& stats, ThreadLocal::Instance& tls, Runtime::Loader& runtime,
                           Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
-                          AccessLog::AccessLogManager& log_manager) override;
+                          AccessLog::AccessLogManager& log_manager,
+                          Server::SecretManager& secret_manager) override;
   Http::ConnectionPool::InstancePtr
   allocateConnPool(Event::Dispatcher& dispatcher, HostConstSharedPtr host,
                    ResourcePriority priority, Http::Protocol protocol,
@@ -68,6 +75,7 @@ private:
   Network::DnsResolverSharedPtr dns_resolver_;
   Ssl::ContextManager& ssl_context_manager_;
   const LocalInfo::LocalInfo& local_info_;
+  Server::SecretManager& secret_manager_;
 };
 
 /**
@@ -150,7 +158,16 @@ public:
                      ThreadLocal::Instance& tls, Runtime::Loader& runtime,
                      Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
                      AccessLog::AccessLogManager& log_manager,
-                     Event::Dispatcher& main_thread_dispatcher);
+                     Event::Dispatcher& main_thread_dispatcher,
+                     Server::SecretManager& secret_manager);
+
+  /**
+   * Handles update sds secret
+   *
+   * @param sds_secret_name name of the sds secret stored in the secret manager
+   * @return TRUE if the cluster successfully refreshed the transport socket factory instance
+   */
+  bool sdsSecretUpdated(const std::string sds_secret_name) override;
 
   // Upstream::ClusterManager
   bool addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) override;
@@ -285,10 +302,44 @@ private:
   private:
     std::list<ClusterUpdateCallbacks*>::iterator entry;
     std::list<ClusterUpdateCallbacks*>& list;
+
+    const std::vector<std::pair<std::string, bool>> sds_secrets_;
   };
 
   typedef std::unique_ptr<ClusterData> ClusterDataPtr;
   typedef std::unordered_map<std::string, ClusterDataPtr> ClusterMap;
+
+  class ClusterCreationInfo {
+   public:
+    ClusterCreationInfo(
+        const envoy::api::v2::Cluster& config,
+        const std::vector<std::pair<std::string, bool>> sds_secrets)
+        : config_([&config] {
+            envoy::api::v2::Cluster cfg;
+            cfg.CopyFrom(config);
+            return cfg;
+          }()),
+          sds_secrets_(sds_secrets) {
+    }
+
+    virtual ~ClusterCreationInfo() {
+    }
+
+    const envoy::api::v2::Cluster& getConfig() {
+      return config_;
+    }
+
+    const std::vector<std::pair<std::string, bool>>& getSdsSecrets() {
+      return sds_secrets_;
+    }
+
+   private:
+    const envoy::api::v2::Cluster config_;
+    const std::vector<std::pair<std::string, bool>> sds_secrets_;
+  };
+
+  typedef std::unique_ptr<ClusterCreationInfo> ClusterCreationInfoPtr;
+
 
   void createOrUpdateThreadLocalCluster(ClusterData& cluster);
   static ClusterManagerStats generateStats(Stats::Scope& scope);
@@ -319,6 +370,11 @@ private:
   // The name of the local cluster of this Envoy instance if defined, else the empty string.
   std::string local_cluster_name_;
   Grpc::AsyncClientManagerPtr async_client_manager_;
+  Server::SecretManager& secret_manager_;
+
+  // If all required information are not ready, creation request will be added
+  // to the pending_creation_listener_
+  std::unordered_map<std::string, std::unique_ptr<ClusterCreationInfo>> pending_creation_clusters_;
 };
 
 } // namespace Upstream

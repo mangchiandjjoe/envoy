@@ -225,7 +225,8 @@ ClusterLoadReportStats ClusterInfoImpl::generateLoadReportStats(Stats::Scope& sc
 ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
                                  const envoy::api::v2::core::BindConfig& bind_config,
                                  Runtime::Loader& runtime, Stats::Store& stats,
-                                 Ssl::ContextManager& ssl_context_manager, bool added_via_api)
+                                 Ssl::ContextManager& ssl_context_manager, bool added_via_api,
+                                 Server::SecretManager& secret_manager)
     : runtime_(runtime), name_(config.name()), type_(config.type()),
       max_requests_per_connection_(
           PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, max_requests_per_connection, 0)),
@@ -246,7 +247,36 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
       lb_ring_hash_config_(envoy::api::v2::Cluster::RingHashLbConfig(config.ring_hash_lb_config())),
       ssl_context_manager_(ssl_context_manager), added_via_api_(added_via_api),
       lb_subset_(LoadBalancerSubsetInfoImpl(config.lb_subset_config())),
-      metadata_(config.metadata()), common_lb_config_(config.common_lb_config()) {
+      metadata_(config.metadata()), common_lb_config_(config.common_lb_config()),
+      secret_manager_(secret_manager),
+      transport_socker_([&config] {
+        // clone transport_socket info to refresh the transport_socket_factory
+          envoy::api::v2::core::TransportSocket transport_socket;
+          if (!config.has_transport_socket()) {
+            if (config.has_tls_context()) {
+              transport_socket.set_name(Extensions::TransportSockets::TransportSocketNames::get().SSL);
+              MessageUtil::jsonConvert(config.tls_context(), *transport_socket.mutable_config());
+            } else {
+              transport_socket.set_name(Extensions::TransportSockets::TransportSocketNames::get().RAW_BUFFER);
+            }
+          } else {
+            transport_socket.CopyFrom(config.transport_socket());
+          }
+          return transport_socket;
+        }()),
+        sds_secret_names_([&config] {
+        // collect dynamic SdsSecretConfig names
+          std::set<std::string> sds_secret_names;
+          if (config.has_tls_context() && config.tls_context().has_common_tls_context()) {
+            for (auto sds_secret_configs : config.tls_context().common_tls_context()
+                .tls_certificate_sds_secret_configs()) {
+              if (sds_secret_configs.has_sds_config()) {
+                sds_secret_names.insert(sds_secret_configs.name());
+              }
+            }
+          }
+          return sds_secret_names;
+        }()) {
 
   // If the cluster doesn't have a transport socket configured, override with the default transport
   // socket implementation based on the tls_context. We copy by value first then override if
@@ -309,6 +339,21 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
   }
 }
 
+// Refresh the TransportSocketFactory instance if sds_secret_name is in dynamic SDS configuration
+bool ClusterInfoImpl::refreshTransportSocketFactory(const std::string& sds_secret_name) {
+  if (sds_secret_names_.find(sds_secret_name) != sds_secret_names_.end()) {
+    auto& config_factory = Config::Utility::getAndCheckFactory<
+        Server::Configuration::UpstreamTransportSocketConfigFactory>(transport_socker_.name());
+
+    ProtobufTypes::MessagePtr message = Config::Utility::translateToFactoryConfig(transport_socker_,
+                                                                                  config_factory);
+
+    // TODO (jaebong) transport_socket_factory_ must protect !!!!
+    transport_socket_factory_ = config_factory.createTransportSocketFactory(*message, *this);
+  }
+  return true;
+}
+
 ClusterSharedPtr ClusterImplBase::create(const envoy::api::v2::Cluster& cluster, ClusterManager& cm,
                                          Stats::Store& stats, ThreadLocal::Instance& tls,
                                          Network::DnsResolverSharedPtr dns_resolver,
@@ -317,7 +362,8 @@ ClusterSharedPtr ClusterImplBase::create(const envoy::api::v2::Cluster& cluster,
                                          Event::Dispatcher& dispatcher,
                                          const LocalInfo::LocalInfo& local_info,
                                          Outlier::EventLoggerSharedPtr outlier_event_logger,
-                                         bool added_via_api) {
+                                         bool added_via_api,
+										 Server::SecretManager& secret_manager) {
   std::unique_ptr<ClusterImplBase> new_cluster;
 
   // We make this a shared pointer to deal with the distinct ownership
@@ -340,17 +386,17 @@ ClusterSharedPtr ClusterImplBase::create(const envoy::api::v2::Cluster& cluster,
   switch (cluster.type()) {
   case envoy::api::v2::Cluster::STATIC:
     new_cluster.reset(
-        new StaticClusterImpl(cluster, runtime, stats, ssl_context_manager, cm, added_via_api));
+        new StaticClusterImpl(cluster, runtime, stats, ssl_context_manager, cm, added_via_api, secret_manager));
     break;
   case envoy::api::v2::Cluster::STRICT_DNS:
     new_cluster.reset(new StrictDnsClusterImpl(cluster, runtime, stats, ssl_context_manager,
                                                selected_dns_resolver, cm, dispatcher,
-                                               added_via_api));
+                                               added_via_api, secret_manager));
     break;
   case envoy::api::v2::Cluster::LOGICAL_DNS:
     new_cluster.reset(new LogicalDnsCluster(cluster, runtime, stats, ssl_context_manager,
                                             selected_dns_resolver, tls, cm, dispatcher,
-                                            added_via_api));
+                                            added_via_api, secret_manager));
     break;
   case envoy::api::v2::Cluster::ORIGINAL_DST:
     if (cluster.lb_policy() != envoy::api::v2::Cluster::ORIGINAL_DST_LB) {
@@ -362,7 +408,7 @@ ClusterSharedPtr ClusterImplBase::create(const envoy::api::v2::Cluster& cluster,
           "cluster: cluster type 'original_dst' may not be used with lb_subset_config"));
     }
     new_cluster.reset(new OriginalDstCluster(cluster, runtime, stats, ssl_context_manager, cm,
-                                             dispatcher, added_via_api));
+                                             dispatcher, added_via_api, secret_manager));
     break;
   case envoy::api::v2::Cluster::EDS:
     if (!cluster.has_eds_cluster_config()) {
@@ -371,7 +417,7 @@ ClusterSharedPtr ClusterImplBase::create(const envoy::api::v2::Cluster& cluster,
 
     // We map SDS to EDS, since EDS provides backwards compatibility with SDS.
     new_cluster.reset(new EdsClusterImpl(cluster, runtime, stats, ssl_context_manager, local_info,
-                                         cm, dispatcher, random, added_via_api));
+                                         cm, dispatcher, random, added_via_api, secret_manager));
     break;
   default:
     NOT_REACHED;
@@ -392,9 +438,11 @@ ClusterSharedPtr ClusterImplBase::create(const envoy::api::v2::Cluster& cluster,
 ClusterImplBase::ClusterImplBase(const envoy::api::v2::Cluster& cluster,
                                  const envoy::api::v2::core::BindConfig& bind_config,
                                  Runtime::Loader& runtime, Stats::Store& stats,
-                                 Ssl::ContextManager& ssl_context_manager, bool added_via_api)
+                                 Ssl::ContextManager& ssl_context_manager, bool added_via_api,
+                                 Server::SecretManager& secret_manager)
     : runtime_(runtime), info_(new ClusterInfoImpl(cluster, bind_config, runtime, stats,
-                                                   ssl_context_manager, added_via_api)) {
+                                                   ssl_context_manager, added_via_api, secret_manager)),
+												   secret_manager_(secret_manager) {
   // Create the default (empty) priority set before registering callbacks to
   // avoid getting an update the first time it is accessed.
   priority_set_.getOrCreateHostSet(0);
@@ -438,6 +486,10 @@ bool ClusterInfoImpl::maintenanceMode() const {
 ResourceManager& ClusterInfoImpl::resourceManager(ResourcePriority priority) const {
   ASSERT(enumToInt(priority) < resource_managers_.managers_.size());
   return *resource_managers_.managers_[enumToInt(priority)];
+}
+
+bool ClusterImplBase::sdsSecretUpdated(const std::string& sds_secret_name) {
+  return info_->refreshTransportSocketFactory(sds_secret_name);
 }
 
 void ClusterImplBase::initialize(std::function<void()> callback) {
@@ -601,8 +653,10 @@ ClusterInfoImpl::ResourceManagers::load(const envoy::api::v2::Cluster& config,
 StaticClusterImpl::StaticClusterImpl(const envoy::api::v2::Cluster& cluster,
                                      Runtime::Loader& runtime, Stats::Store& stats,
                                      Ssl::ContextManager& ssl_context_manager, ClusterManager& cm,
-                                     bool added_via_api)
-    : ClusterImplBase(cluster, cm.bindConfig(), runtime, stats, ssl_context_manager, added_via_api),
+                                     bool added_via_api,
+									 Server::SecretManager& secret_manager)
+    : ClusterImplBase(cluster, cm.bindConfig(), runtime, stats, ssl_context_manager,
+	  			added_via_api, secret_manager),
       initial_hosts_(new HostVector()) {
 
   for (const auto& host : cluster.hosts()) {
@@ -751,9 +805,10 @@ StrictDnsClusterImpl::StrictDnsClusterImpl(const envoy::api::v2::Cluster& cluste
                                            Ssl::ContextManager& ssl_context_manager,
                                            Network::DnsResolverSharedPtr dns_resolver,
                                            ClusterManager& cm, Event::Dispatcher& dispatcher,
-                                           bool added_via_api)
+                                           bool added_via_api,
+										   Server::SecretManager& secret_manager)
     : BaseDynamicClusterImpl(cluster, cm.bindConfig(), runtime, stats, ssl_context_manager,
-                             added_via_api),
+                             added_via_api, secret_manager),
       dns_resolver_(dns_resolver),
       dns_refresh_rate_ms_(
           std::chrono::milliseconds(PROTOBUF_GET_MS_OR_DEFAULT(cluster, dns_refresh_rate, 5000))) {

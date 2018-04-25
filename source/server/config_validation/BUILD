@@ -46,6 +46,7 @@ envoy_cc_library(
     deps = [
         ":async_client_lib",
         "//include/envoy/upstream:cluster_manager_interface",
+        "//include/envoy/server:secret_manager_interface",
         "//source/common/upstream:cluster_manager_lib",
     ],
 )

@@ -113,7 +113,7 @@ ProdListenerComponentFactory::createDrainManager(envoy::api::v2::Listener::Drain
 
 ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, ListenerManagerImpl& parent,
                            const std::string& name, bool modifiable, bool workers_started,
-                           uint64_t hash)
+                           uint64_t hash, Server::SecretManager& secret_manager)
     : parent_(parent), address_(Network::Address::resolveProtoAddress(config.address())),
       global_scope_(parent_.server_.stats().createScope("")),
       listener_scope_(
@@ -127,7 +127,8 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, ListenerManag
       workers_started_(workers_started), hash_(hash),
       local_drain_manager_(parent.factory_.createDrainManager(config.drain_type())),
       metadata_(config.has_metadata() ? config.metadata()
-                                      : envoy::api::v2::core::Metadata::default_instance()) {
+                                      : envoy::api::v2::core::Metadata::default_instance()),
+      secret_manager_(secret_manager) {
   // TODO(htuch): Support multiple filter chains #1280, add constraint to ensure we have at least on
   // filter chain #1308.
   ASSERT(config.filter_chains().size() >= 1);
@@ -181,6 +182,8 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, ListenerManag
                                        address_->asString()));
     }
 
+    // dynamic sds secret config names
+    std::set<std::string> sds_secret_config_names;
     // If the cluster doesn't have transport socke configured, override with default transport
     // socket implementation based on tls_context. We copy by value first then override if
     // neccessary.
@@ -189,6 +192,15 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, ListenerManag
       if (filter_chain.has_tls_context()) {
         transport_socket.set_name(Extensions::TransportSockets::TransportSocketNames::get().SSL);
         MessageUtil::jsonConvert(filter_chain.tls_context(), *transport_socket.mutable_config());
+
+        if (filter_chain.tls_context().has_common_tls_context()) {
+          for (auto sds_secret_configs : filter_chain.tls_context().common_tls_context()
+              .tls_certificate_sds_secret_configs()) {
+            if (sds_secret_configs.has_sds_config()) {
+              sds_secret_config_names.insert(sds_secret_configs.name());
+            }
+          }
+        }
 
         has_tls++;
         if (filter_chain.tls_context().has_session_ticket_keys()) {
@@ -214,6 +226,14 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, ListenerManag
     transport_socket_factories_.emplace_back(config_factory.createTransportSocketFactory(
         name_, sni_domains, skip_context_update, *message, *this));
     ASSERT(transport_socket_factories_.back() != nullptr);
+
+    if (sds_secret_config_names.size() > 0) {
+      std::unique_ptr<TransportSocketFactoryInfo> info(
+          new TransportSocketFactoryInfo(transport_socket_factories_.size() - 1, name_, sni_domains,
+                                         skip_context_update, transport_socket,
+                                         sds_secret_config_names));
+      transport_socket_factories_infos_.emplace_back(std::move(info));
+    }
   }
   ASSERT(!transport_socket_factories_.empty());
 
@@ -272,6 +292,35 @@ void ListenerImpl::initialize() {
   }
 }
 
+bool ListenerImpl::refreshTransportSocketFactory(const std::string sds_secret_name) {
+  bool restart_listener = false;
+
+  for (auto& info : transport_socket_factories_infos_) {
+    // check the updated sds_secret_config_name is associated
+    if (info->checkRelated(sds_secret_name)) {
+      ENVOY_LOG(info, "secrets for {} has updated. reloading the secret", sds_secret_name);
+
+      auto& config_factory = Config::Utility::getAndCheckFactory<
+          Server::Configuration::DownstreamTransportSocketConfigFactory>(info->getConfig().name());
+
+      std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
+      restart_listener = true;
+
+      transport_socket_factories_[info->getSocketFactoryIndex()] = config_factory
+          .createTransportSocketFactory(
+          info->getName(), info->getServerNames(), info->getSkipSslContextUpdate(),
+          *Config::Utility::translateToFactoryConfig(info->getConfig(), config_factory), *this);
+    }
+  }
+
+  if(restart_listener) {
+    ENVOY_LOG(info, "listener restarted");
+    // TODO(jaebong) restart the listener
+  }
+
+  return true;
+}
+
 Init::Manager& ListenerImpl::initManager() {
   // See initialize() for why we choose different init managers to return.
   if (workers_started_) {
@@ -320,6 +369,52 @@ ListenerManagerStats ListenerManagerImpl::generateStats(Stats::Scope& scope) {
                                      POOL_GAUGE_PREFIX(scope, final_prefix))};
 }
 
+bool ListenerManagerImpl::sdsSecretUpdated(const std::string sds_secret_name) {
+  std::vector<uint64_t> created_listener_hashes;
+
+  for (const auto& info : pending_creation_listeners_) {
+    bool is_ready_to_create = true;
+
+    for (auto item : info.second->getSdsSecrets()) {
+      if (server_.secretManager().getSecret(item.first, item.second) == nullptr) {
+        is_ready_to_create = false;
+        break;
+      }
+    }
+
+    if (is_ready_to_create) {
+      ENVOY_LOG(info, "All required SDS secrets were downloaded. creating listner: ", info.first);
+
+      try {
+        if(addOrUpdateListener(info.second->getConfig(), info.second->getModifiable())) {
+          created_listener_hashes.push_back(info.first);
+        } else {
+          ENVOY_LOG(info, "Failed to crate a listner: {}", info.first);
+        }
+      } catch (EnvoyException& e) {
+        ENVOY_LOG(info, "failed to create a cluster: {} {}", info.second->getConfig().name(), e.what());
+      }
+    }
+  }
+
+  // removed completed from pending_creation_listeners_
+  for (uint64_t listener_hash : created_listener_hashes) {
+    pending_creation_listeners_.erase(listener_hash);
+  }
+
+  // Update secrets for warming_listeners_
+  for(ListenerImplPtr& listner: warming_listeners_) {
+    listner->refreshTransportSocketFactory(sds_secret_name);
+  }
+
+  // Update secrets for active_listeners_
+  for(ListenerImplPtr& listner: active_listeners_) {
+    listner->refreshTransportSocketFactory(sds_secret_name);
+  }
+
+  return true;
+}
+
 bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& config,
                                               bool modifiable) {
   std::string name;
@@ -330,6 +425,52 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
   }
   const uint64_t hash = MessageUtil::hash(config);
   ENVOY_LOG(debug, "begin add/update listener: name={} hash={}", name, hash);
+
+  std::vector<std::pair<std::string, bool>> sds_secret_names;
+  for (auto filter_chain : config.filter_chains()) {
+    if (filter_chain.has_tls_context()
+        && filter_chain.tls_context().has_common_tls_context()) {
+      auto common_tls_context = filter_chain.tls_context().common_tls_context();
+      for (auto sds_secrets_config : filter_chain.tls_context()
+          .common_tls_context().tls_certificate_sds_secret_configs()) {
+        // Register sds_config to the SecretManager. SecretManager starts
+        // downloading secrets from SDS server.
+        if (sds_secrets_config.has_sds_config()) {
+          this->server_.secretManager().addOrUpdateSdsConfigSource(
+              sds_secrets_config.sds_config());
+        }
+
+        sds_secret_names.push_back(
+            {sds_secrets_config.name(), !sds_secrets_config.has_sds_config()});
+      }
+    }
+  }
+
+  // Check all required SDS secrets were downloaded
+  bool sds_secret_required = false;
+  for (const auto& sds_secret : sds_secret_names) {
+    if (this->server_.secretManager().getSecret(sds_secret.first, sds_secret.second) == nullptr) {
+      sds_secret_required = true;
+      break;
+    }
+  }
+
+  // If some or all secrets were not downloaded yet, then suspend the listener
+  // creation after all secrets were downloaded.
+  if (sds_secret_required) {
+    // Add or update listener when all related sds secrets were arrived
+
+    ListenerCreationInfoPtr info(
+        new ListenerCreationInfo(config, modifiable, sds_secret_names));
+    pending_creation_listeners_[hash] = std::move(info);
+
+    ENVOY_LOG(
+        info,
+        "required sds secrets are not ready yet. adding to pending " "listener creation list. name={} hash={}",
+        name, hash);
+
+    return true;
+  }
 
   auto existing_active_listener = getListenerByName(active_listeners_, name);
   auto existing_warming_listener = getListenerByName(warming_listeners_, name);
@@ -345,7 +486,7 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
   }
 
   ListenerImplPtr new_listener(
-      new ListenerImpl(config, *this, name, modifiable, workers_started_, hash));
+      new ListenerImpl(config, *this, name, modifiable, workers_started_, hash, server_.secretManager()));
   ListenerImpl& new_listener_ref = *new_listener;
 
   // We mandate that a listener with the same name must have the same configured address. This

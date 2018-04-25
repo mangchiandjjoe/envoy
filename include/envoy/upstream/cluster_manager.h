@@ -18,6 +18,7 @@
 #include "envoy/upstream/load_balancer.h"
 #include "envoy/upstream/thread_local_cluster.h"
 #include "envoy/upstream/upstream.h"
+#include "envoy/server/secret_manager.h"
 
 namespace Envoy {
 namespace Upstream {
@@ -73,6 +74,18 @@ public:
    * @return true if the action results in an add/update of a cluster.
    */
   virtual bool addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) PURE;
+
+  /**
+   * Handles updated sds secret. If any cluster stay in the pending creation list and all required
+   * secrets were downloaded, then create the cluster. If any cluster is using the sds secret
+   * name needs to refresh the transport socket factory instance.
+   *
+   * @param sds_secret_name the name of the updated secret
+   *
+   * @return TRUE if the listener manager successfully handled updated sds secret stored in the
+   *         secret manager
+   */
+virtual bool sdsSecretUpdated(const std::string sds_secret_name) PURE;
 
   /**
    * Set a callback that will be invoked when all owned clusters have been initialized.
@@ -241,7 +254,7 @@ public:
   clusterManagerFromProto(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,
                           Stats::Store& stats, ThreadLocal::Instance& tls, Runtime::Loader& runtime,
                           Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
-                          AccessLog::AccessLogManager& log_manager) PURE;
+                          AccessLog::AccessLogManager& log_manager, Server::SecretManager& secret_manager) PURE;
 
   /**
    * Allocate an HTTP connection pool for the host. Pools are separated by 'priority',

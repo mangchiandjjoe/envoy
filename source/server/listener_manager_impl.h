@@ -1,11 +1,15 @@
 #pragma once
 
+#include <mutex>
+#include <shared_mutex>
+
 #include "envoy/api/v2/listener/listener.pb.h"
 #include "envoy/server/filter_config.h"
 #include "envoy/server/instance.h"
 #include "envoy/server/listener_manager.h"
 #include "envoy/server/transport_socket_config.h"
 #include "envoy/server/worker.h"
+#include "envoy/network/transport_socket.h"
 
 #include "common/common/logger.h"
 
@@ -85,6 +89,43 @@ struct ListenerManagerStats {
   ALL_LISTENER_MANAGER_STATS(GENERATE_COUNTER_STRUCT, GENERATE_GAUGE_STRUCT)
 };
 
+class ListenerCreationInfo {
+ public:
+  ListenerCreationInfo(const envoy::api::v2::Listener& config, bool modifiable,
+                       const std::vector<std::pair<std::string, bool>> sds_secrets)
+      : config_([&config] {
+          envoy::api::v2::Listener cfg;
+          cfg.CopyFrom(config);
+          return cfg;
+        }()),
+        modifiable_(modifiable),
+        sds_secrets_(sds_secrets) {
+  }
+
+  virtual ~ListenerCreationInfo() {
+  }
+
+  const envoy::api::v2::Listener& getConfig() {
+    return config_;
+  }
+
+  bool getModifiable() {
+    return modifiable_;
+  }
+
+  const std::vector<std::pair<std::string, bool>>& getSdsSecrets() {
+    return sds_secrets_;
+  }
+
+ private:
+  const envoy::api::v2::Listener config_;
+  bool modifiable_;
+  const std::vector<std::pair<std::string, bool>> sds_secrets_;
+};
+
+typedef std::unique_ptr<ListenerCreationInfo> ListenerCreationInfoPtr;
+
+
 /**
  * Implementation of ListenerManager.
  */
@@ -103,6 +144,7 @@ public:
   void startWorkers(GuardDog& guard_dog) override;
   void stopListeners() override;
   void stopWorkers() override;
+  bool sdsSecretUpdated(const std::string sds_secret_name) override;
 
   Instance& server_;
   ListenerComponentFactory& factory_;
@@ -144,6 +186,10 @@ private:
    */
   ListenerList::iterator getListenerByName(ListenerList& listeners, const std::string& name);
 
+  // If all required information are not ready, creation request will be added
+  // to the pending_creation_listener_
+  std::unordered_map<uint64_t, ListenerCreationInfoPtr> pending_creation_listeners_;
+
   // Active listeners are listeners that are currently accepting new connections on the workers.
   ListenerList active_listeners_;
   // Warming listeners are listeners that may need further initialization via the listener's init
@@ -159,6 +205,61 @@ private:
   bool workers_started_{};
   ListenerManagerStats stats_;
 };
+
+class TransportSocketFactoryInfo {
+ public:
+  TransportSocketFactoryInfo(int socket_factory_index, const std::string& listener_name,
+                             const std::vector<std::string>& server_names,
+                             bool skip_ssl_context_update,
+                             const envoy::api::v2::core::TransportSocket& config,
+                             std::set<std::string> sds_secret_name)
+      : socket_factory_index_(socket_factory_index),
+        listener_name_(listener_name),
+        server_names_(server_names),
+        skip_ssl_context_update_(skip_ssl_context_update),
+        config_([&config] {
+          envoy::api::v2::core::TransportSocket cfg;
+          cfg.CopyFrom(config);
+          return cfg;
+        }()),
+        sds_secret_name_(sds_secret_name) {
+  }
+
+  bool checkRelated(const std::string sds_secret_name) {
+    return sds_secret_name_.find(sds_secret_name) != sds_secret_name_.end();
+  }
+
+  const std::string& getName() {
+    return listener_name_;
+  }
+
+  const std::vector<std::string>& getServerNames() {
+    return server_names_;
+  }
+
+  const envoy::api::v2::core::TransportSocket getConfig() {
+    return config_;
+  }
+
+  bool getSkipSslContextUpdate() {
+    return skip_ssl_context_update_;
+  }
+
+  int getSocketFactoryIndex() {
+    return socket_factory_index_;
+  }
+
+ private:
+  const int socket_factory_index_;
+  const std::string& listener_name_;
+  const std::vector<std::string> server_names_;
+  bool skip_ssl_context_update_;
+  const envoy::api::v2::core::TransportSocket config_;
+  const std::set<std::string> sds_secret_name_;
+};
+
+typedef std::unique_ptr<TransportSocketFactoryInfo> TransportSocketFactoryInfoPtr;
+
 
 // TODO(mattklein123): Consider getting rid of pre-worker start and post-worker start code by
 //                     initializing all listeners after workers are started.
@@ -184,7 +285,8 @@ public:
    * @param hash supplies the hash to use for duplicate checking.
    */
   ListenerImpl(const envoy::api::v2::Listener& config, ListenerManagerImpl& parent,
-               const std::string& name, bool modifiable, bool workers_started, uint64_t hash);
+               const std::string& name, bool modifiable, bool workers_started, uint64_t hash,
+               Server::SecretManager& secret_manager);
   ~ListenerImpl();
 
   /**
@@ -221,6 +323,10 @@ public:
   }
   Network::TransportSocketFactory& transportSocketFactory() override {
     return *transport_socket_factories_[0];
+  }
+  Network::TransportSocketPtr createTransportSocket() const override {
+    std::shared_lock < std::shared_timed_mutex > rhs(mutex_);
+    return transport_socket_factories_[0]->createTransportSocket();
   }
   uint32_t perConnectionBufferLimitBytes() override { return per_connection_buffer_limit_bytes_; }
   Stats::Scope& listenerScope() override { return *listener_scope_; }
@@ -268,6 +374,9 @@ public:
   Ssl::ContextManager& sslContextManager() override { return parent_.server_.sslContextManager(); }
   Stats::Scope& statsScope() const override { return *listener_scope_; }
 
+  bool refreshTransportSocketFactory(const std::string sds_secret_name);
+
+  Server::SecretManager& secretManager() override { return secret_manager_; }
 private:
   ListenerManagerImpl& parent_;
   Network::Address::InstanceConstSharedPtr address_;
@@ -276,6 +385,7 @@ private:
   Stats::ScopePtr listener_scope_; // Stats with listener named scope.
   std::vector<Ssl::ServerContextPtr> tls_contexts_;
   std::vector<Network::TransportSocketFactoryPtr> transport_socket_factories_;
+  std::vector<TransportSocketFactoryInfoPtr> transport_socket_factories_infos_;
   const bool bind_to_port_;
   const bool hand_off_restored_destination_connections_;
   const uint32_t per_connection_buffer_limit_bytes_;
@@ -292,6 +402,8 @@ private:
   bool saw_listener_create_failure_{};
   const envoy::api::v2::core::Metadata metadata_;
   Network::Socket::OptionsSharedPtr listen_socket_options_;
+  mutable std::shared_timed_mutex mutex_;
+  Server::SecretManager& secret_manager_;
 };
 
 } // namespace Server

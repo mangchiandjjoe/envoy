@@ -24,6 +24,7 @@
 #include "common/network/utility.h"
 
 #include "server/lds_api.h"
+#include "server/sds_api.h"
 
 namespace Envoy {
 namespace Server {
@@ -148,6 +149,7 @@ private:
 
   std::unique_ptr<Upstream::ClusterManager> cluster_manager_;
   std::unique_ptr<LdsApi> lds_api_;
+  std::unique_ptr<SdsApi> sds_api_;
   Tracing::HttpTracerPtr http_tracer_;
   std::list<Stats::SinkPtr> stats_sinks_;
   RateLimit::ClientFactoryPtr ratelimit_client_factory_;

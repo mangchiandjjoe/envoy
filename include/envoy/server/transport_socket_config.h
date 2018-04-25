@@ -4,6 +4,7 @@
 
 #include "envoy/network/transport_socket.h"
 #include "envoy/ssl/context_manager.h"
+#include "envoy/server/secret_manager.h"
 
 #include "common/protobuf/protobuf.h"
 
@@ -27,6 +28,11 @@ public:
    * @return Stats::Scope& the transport socket's stats scope.
    */
   virtual Stats::Scope& statsScope() const PURE;
+
+  /**
+   * @return Server::SecretManager& reference of the SecretMangaer instance.
+   */
+  virtual Server::SecretManager& secretManager() PURE;
 };
 
 class TransportSocketConfigFactory {

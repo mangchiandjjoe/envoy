@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "envoy/server/secret_manager.h"
+
 #include "common/common/fmt.h"
 #include "common/config/utility.h"
 #include "common/network/address_impl.h"
@@ -20,8 +22,10 @@ LogicalDnsCluster::LogicalDnsCluster(const envoy::api::v2::Cluster& cluster,
                                      Ssl::ContextManager& ssl_context_manager,
                                      Network::DnsResolverSharedPtr dns_resolver,
                                      ThreadLocal::SlotAllocator& tls, ClusterManager& cm,
-                                     Event::Dispatcher& dispatcher, bool added_via_api)
-    : ClusterImplBase(cluster, cm.bindConfig(), runtime, stats, ssl_context_manager, added_via_api),
+                                     Event::Dispatcher& dispatcher, bool added_via_api,
+                                     Server::SecretManager& secret_manager)
+    : ClusterImplBase(cluster, cm.bindConfig(), runtime, stats, ssl_context_manager,
+                      added_via_api, secret_manager),
       dns_resolver_(dns_resolver),
       dns_refresh_rate_ms_(
           std::chrono::milliseconds(PROTOBUF_GET_MS_OR_DEFAULT(cluster, dns_refresh_rate, 5000))),
