@@ -18,7 +18,7 @@
 #include "envoy/upstream/load_balancer.h"
 #include "envoy/upstream/thread_local_cluster.h"
 #include "envoy/upstream/upstream.h"
-#include "envoy/server/secret_manager.h"
+#include "envoy/secret/secret_manager.h"
 
 namespace Envoy {
 namespace Upstream {

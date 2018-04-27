@@ -1,4 +1,4 @@
-#include "common/ssl/secret_impl.h"
+#include "common/secret/secret_impl.h"
 
 #include <string>
 

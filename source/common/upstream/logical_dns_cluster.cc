@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "envoy/server/secret_manager.h"
+#include "envoy/secret/secret_manager.h"
 
 #include "common/common/fmt.h"
 #include "common/config/utility.h"

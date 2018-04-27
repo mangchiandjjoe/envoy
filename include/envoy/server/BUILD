@@ -87,7 +87,6 @@ envoy_cc_library(
         ":drain_manager_interface",
         ":hot_restart_interface",
         ":listener_manager_interface",
-        ":secret_manager_interface",
         ":options_interface",
         "//include/envoy/access_log:access_log_interface",
         "//include/envoy/api:api_interface",
@@ -99,6 +98,7 @@ envoy_cc_library(
         "//include/envoy/thread_local:thread_local_interface",
         "//include/envoy/tracing:http_tracer_interface",
         "//include/envoy/upstream:cluster_manager_interface",
+        "//include/envoy/secret:secret_manager_interface",
     ],
 )
 
@@ -152,14 +152,6 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
-    name = "secret_manager_interface",
-    hdrs = ["secret_manager.h"],
-    deps = [
-        "//include/envoy/ssl:secret_interface",
-    ]
-)
-
-envoy_cc_library(
     name = "listener_manager_interface",
     hdrs = ["listener_manager.h"],
     deps = [
@@ -178,7 +170,7 @@ envoy_cc_library(
     name = "transport_socket_config_interface",
     hdrs = ["transport_socket_config.h"],
     deps = [
-        ":secret_manager_interface",
+        "//include/envoy/secret:secret_manager_interface",
         "//include/envoy/network:transport_socket_interface",
         "//include/envoy/ssl:context_manager_interface",
         "//source/common/protobuf",

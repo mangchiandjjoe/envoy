@@ -7,8 +7,8 @@
 #include "envoy/config/subscription.h"
 #include "envoy/init/init.h"
 #include "envoy/server/listener_manager.h"
-#include "envoy/server/secret_manager.h"
 #include "envoy/server/instance.h"
+#include "envoy/secret/secret_manager.h"
 
 #include "common/common/logger.h"
 

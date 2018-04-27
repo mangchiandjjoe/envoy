@@ -1,12 +1,12 @@
 #pragma once
 
+#include <envoy/secret/secret.h>
 #include <unordered_map>
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/network/filter.h"
 #include "envoy/network/listen_socket.h"
 #include "envoy/network/transport_socket.h"
-#include "envoy/ssl/secret.h"
 #include "common/protobuf/protobuf.h"
 
 namespace Envoy {

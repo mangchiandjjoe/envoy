@@ -1,4 +1,4 @@
-#include "server/sds_subscription.h"
+#include "common/secret/sds_subscription.h"
 
 #include <vector>
 

@@ -1,4 +1,4 @@
-#include "server/secret_manager_impl.h"
+#include "common/secret/secret_manager_impl.h"
 
 #include <string>
 #include <shared_mutex>
@@ -8,7 +8,7 @@
 #include "envoy/config/bootstrap/v2/bootstrap.pb.h"
 #include "envoy/server/instance.h"
 
-#include "common/ssl/secret_impl.h"
+#include "common/secret/secret_impl.h"
 #include "common/common/assert.h"
 #include "common/ssl/context_config_impl.h"
 #include "common/filesystem/filesystem_impl.h"

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "envoy/upstream/cluster_manager.h"
-#include "envoy/server/secret_manager.h"
+#include "envoy/secret/secret_manager.h"
 
 #include "common/upstream/cluster_manager_impl.h"
 

@@ -17,14 +17,13 @@
 #include "envoy/ssl/context_manager.h"
 #include "envoy/thread_local/thread_local.h"
 #include "envoy/upstream/cluster_manager.h"
-#include "envoy/server/secret_manager.h"
+#include "envoy/secret/secret_manager.h"
 
 #include "common/config/grpc_mux_impl.h"
 #include "common/http/async_client_impl.h"
 #include "common/upstream/load_stats_reporter.h"
 #include "common/upstream/upstream_impl.h"
-
-#include "server/sds_api.h"
+#include "common/secret/sds_api.h"
 
 namespace Envoy {
 namespace Upstream {

@@ -1,7 +1,6 @@
 #pragma once
 
-#include "envoy/ssl/secret.h"
-
+#include <envoy/secret/secret.h>
 #include "envoy/api/v2/auth/cert.pb.h"
 
 namespace Envoy {

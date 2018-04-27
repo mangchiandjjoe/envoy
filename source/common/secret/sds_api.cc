@@ -1,20 +1,19 @@
-#include "server/sds_api.h"
+#include <envoy/secret/secret.h>
 
 #include <unordered_map>
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/api/v2/auth/cert.pb.validate.h"
 
+#include "common/secret/sds_api.h"
 #include "common/common/cleanup.h"
 #include "common/config/resources.h"
 #include "common/config/subscription_factory.h"
 #include "common/config/utility.h"
 #include "common/protobuf/utility.h"
+#include "common/secret/sds_subscription.h"
 
-#include "envoy/ssl/secret.h"
-
-#include "envoy/server/secret_manager.h"
-#include "server/sds_subscription.h"
+#include "envoy/secret/secret_manager.h"
 
 namespace Envoy {
 namespace Server {

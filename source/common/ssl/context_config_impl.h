@@ -5,7 +5,7 @@
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/ssl/context_config.h"
-#include "envoy/server/secret_manager.h"
+#include "envoy/secret/secret_manager.h"
 
 #include "common/json/json_loader.h"
 

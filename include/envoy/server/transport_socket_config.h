@@ -4,7 +4,7 @@
 
 #include "envoy/network/transport_socket.h"
 #include "envoy/ssl/context_manager.h"
-#include "envoy/server/secret_manager.h"
+#include "envoy/secret/secret_manager.h"
 
 #include "common/protobuf/protobuf.h"
 

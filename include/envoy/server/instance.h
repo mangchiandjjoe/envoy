@@ -15,7 +15,7 @@
 #include "envoy/server/drain_manager.h"
 #include "envoy/server/hot_restart.h"
 #include "envoy/server/listener_manager.h"
-#include "envoy/server/secret_manager.h"
+#include "envoy/secret/secret_manager.h"
 #include "envoy/server/options.h"
 #include "envoy/ssl/context_manager.h"
 #include "envoy/thread_local/thread_local.h"

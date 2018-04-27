@@ -170,8 +170,11 @@ message ClusterManager {
   envoy.api.v2.core.ApiConfigSource load_stats_config = 4;
 }
 
+// Secret manager :ref:`architecture overview <arch_overview_secret_manager>`.
 message SecretManager {
-
+  // Secret manager stores cached secrets to the configured directory.
+  // [#not-implemented-hide:]
+  string cache_directory = 1;
 }
 
 // Envoy process watchdog configuration. When configured, this monitors for

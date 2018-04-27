@@ -1,17 +1,17 @@
 #pragma once
 
+#include <envoy/secret/secret.h>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
 
 #include "envoy/config/bootstrap/v2/bootstrap.pb.h"
-#include "envoy/server/secret_manager.h"
 #include "envoy/server/instance.h"
 #include "envoy/server/worker.h"
-#include "envoy/ssl/secret.h"
-#include "common/ssl/secret_impl.h"
+#include "envoy/secret/secret_manager.h"
+#include "common/secret/secret_impl.h"
 
-#include "server/sds_api.h"
+#include "common/secret/sds_api.h"
 
 namespace Envoy {
 namespace Server {
