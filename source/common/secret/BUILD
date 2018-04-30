@@ -36,8 +36,6 @@ envoy_cc_library(
         "//source/common/http:rest_api_fetcher_lib",
         "//source/common/json:config_schemas_lib",
         "//source/common/json:json_validator_lib",
-        "@envoy_api//envoy/api/v2:lds_cc",
-        "@envoy_api//envoy/api/v2:eds_cc",
     ],
 )
 
@@ -58,7 +56,6 @@ envoy_cc_library(
         "//source/common/config:subscription_factory_lib",
         "//source/common/config:utility_lib",
         "//source/common/protobuf:utility_lib",
-        "@envoy_api//envoy/api/v2:lds_cc",
     ],
 )
 

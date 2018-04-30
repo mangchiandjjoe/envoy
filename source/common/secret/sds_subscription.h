@@ -4,7 +4,6 @@
 #include <string>
 
 #include "envoy/api/v2/core/base.pb.h"
-#include "envoy/api/v2/eds.pb.h"
 #include "envoy/config/subscription.h"
 
 #include "common/common/assert.h"

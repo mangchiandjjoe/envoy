@@ -1,13 +1,9 @@
 #pragma once
 
-#include <envoy/secret/secret.h>
-#include <unordered_map>
+#include <string>
 
-#include "envoy/api/v2/auth/cert.pb.h"
-#include "envoy/network/filter.h"
-#include "envoy/network/listen_socket.h"
-#include "envoy/network/transport_socket.h"
-#include "common/protobuf/protobuf.h"
+#include "envoy/config/bootstrap/v2/bootstrap.pb.h"
+#include "envoy/secret/secret.h"
 
 namespace Envoy {
 namespace Secret {
@@ -20,15 +16,33 @@ class SecretManager {
   virtual ~SecretManager() {
   }
 
+  /**
+   * Add or update SDS config source
+   * @return true when successful, otherwise returns false
+   */
+  virtual bool addOrUpdateSdsConfigSource(const envoy::api::v2::core::ConfigSource& config_source) PURE;
+
+  /**
+   * Add or update secret
+   * @return true when successful, otherwise returns false
+   */
   virtual bool addOrUpdateSecret(const envoy::api::v2::auth::Secret& config, bool is_static) PURE;
 
-  typedef std::unordered_map<std::string, SecretPtr> SecretInfoMap;
+  /**
+   * @return map of secrets
+   */
+  virtual SecretInfoMap& secrets() PURE;
 
+  /**
+   * @return the secret for the given name
+   */
   virtual SecretPtr getSecret(const std::string& name, bool is_static) PURE;
 
+  /**
+   * Remove secret with the given name
+   * @return true when successful, otherwise returns false
+   */
   virtual bool removeSecret(const std::string& name) PURE;
-
-  virtual bool addOrUpdateSdsConfigSource(const envoy::api::v2::core::ConfigSource& config_source) PURE;
 
 };
 

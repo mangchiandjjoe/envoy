@@ -1,19 +1,19 @@
 #include <envoy/secret/secret.h>
 
 #include <unordered_map>
+#include <set>
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/api/v2/auth/cert.pb.validate.h"
+#include "envoy/secret/secret_manager.h"
 
-#include "common/secret/sds_api.h"
 #include "common/common/cleanup.h"
 #include "common/config/resources.h"
 #include "common/config/subscription_factory.h"
 #include "common/config/utility.h"
 #include "common/protobuf/utility.h"
+#include "common/secret/sds_api.h"
 #include "common/secret/sds_subscription.h"
-
-#include "envoy/secret/secret_manager.h"
 
 namespace Envoy {
 namespace Secret {
@@ -48,6 +48,7 @@ void SdsApi::initialize(std::function<void()> callback) {
       "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets");
 
   Config::Utility::checkLocalInfo("sds", server_.localInfo());
+
   subscription_->start({}, *this);
 }
 
@@ -56,13 +57,24 @@ void SdsApi::onConfigUpdate(const ResourceVector& resources) {
     MessageUtil::validate(secret);
   }
 
-  for (const auto& secret : resources) {
-    const std::string secret_name = secret.name();
-
-    // All secrets downloaded through the SdsApi are not static
-    if (secret_manager_.addOrUpdateSecret(secret, false)) {
-      ENVOY_LOG(info, "sds: add/update secret '{}'", secret_name);
+  std::set<std::string> secrets_to_be_removed;
+  for (const auto& secret : secret_manager_.secrets()) {
+    if(!secret.second->isStatic()) {
+      secrets_to_be_removed.insert(secret.first);
     }
+  }
+
+  for (const auto& secret : resources) {
+    // All secrets downloaded through the SdsApi are dynamic
+    secrets_to_be_removed.erase(secret.name());
+    if (secret_manager_.addOrUpdateSecret(secret, false)) {
+      ENVOY_LOG(info, "sds: add/update secret '{}'", secret.name());
+    }
+  }
+
+  for(const auto& name : secrets_to_be_removed) {
+    secret_manager_.removeSecret(name);
+    ENVOY_LOG(info, "sds: removed secret '{}'", name);
   }
 
   runInitializeCallbackIfAny();

@@ -19,8 +19,8 @@ namespace Secret {
  * SDS API implementation that fetches via Subscription.
  */
 class SdsApi : public Init::Target,
-                      Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret>,
-                      Logger::Loggable<Logger::Id::upstream> {
+  Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret>,
+  Logger::Loggable<Logger::Id::upstream> {
 
  public:
   SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
@@ -63,10 +63,8 @@ class SdsApi : public Init::Target,
   const envoy::api::v2::core::ConfigSource sds_config_;
   SecretManager& secret_manager_;
 
-
   std::unique_ptr<Config::Subscription<envoy::api::v2::auth::Secret>> subscription_;
   std::function<void()> initialize_callback_;
-
 
  private:
   // tls_certificate

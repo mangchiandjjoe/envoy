@@ -1,21 +1,15 @@
 #pragma once
 
-#include <envoy/secret/secret.h>
 #include "envoy/api/v2/auth/cert.pb.h"
+#include "envoy/secret/secret.h"
+#include "common/common/logger.h"
 
 namespace Envoy {
 namespace Secret {
 
-class SecretImpl : public Secret {
+class SecretImpl : public Secret, Logger::Loggable<Logger::Id::upstream> {
  public:
-  SecretImpl(const std::string& certificate_chain,
-             const std::string& private_key, bool is_static);
-
-  SecretImpl(const std::string& certificate_chain,
-             const std::string& private_key)
-      : SecretImpl(certificate_chain, private_key, false) {
-
-  }
+  SecretImpl(const envoy::api::v2::auth::Secret& config, bool is_static);
 
   virtual ~SecretImpl() {
   }
@@ -31,6 +25,11 @@ class SecretImpl : public Secret {
   bool isStatic() override {
     return is_static_;
   }
+
+ private:
+  const std::string readDataSource(const envoy::api::v2::core::DataSource& source,
+                                   bool allow_empty);
+  const std::string getDataSourcePath(const envoy::api::v2::core::DataSource& source);
 
  private:
   std::string name_;

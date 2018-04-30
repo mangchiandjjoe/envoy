@@ -6,11 +6,13 @@
 #include "openssl/ssl.h"
 
 #include "envoy/config/bootstrap/v2/bootstrap.pb.h"
+#include "envoy/api/v2/auth/cert.pb.h"
+
 #include "envoy/server/instance.h"
 
-#include "common/secret/secret_impl.h"
 #include "common/common/assert.h"
-#include "common/ssl/context_config_impl.h"
+#include "common/common/logger.h"
+#include "common/secret/secret_impl.h"
 #include "common/filesystem/filesystem_impl.h"
 #include "common/protobuf/utility.h"
 #include "common/config/tls_context_json.h"
@@ -44,25 +46,45 @@ bool SecretManagerImpl::addOrUpdateSecret(const envoy::api::v2::auth::Secret& co
                                           bool is_static) {
   std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
 
-  if (config.has_tls_certificate()) {
-    std::string certificate_chain = readDataSource(config.tls_certificate().certificate_chain(),
-                                                   true);
-    std::string private_key = readDataSource(config.tls_certificate().private_key(), true);
+  switch (config.type_case()) {
+    case envoy::api::v2::auth::Secret::kTlsCertificate:
+      {
+        auto secret = SecretPtr(new SecretImpl(config, is_static));
 
-    secrets_[config.name()] = SecretPtr(new SecretImpl(certificate_chain, private_key, is_static));
+        if (secrets_.find(config.name()) != secrets_.end()) {
+          if (secrets_[config.name()]->getCertificateChain() == secret->getCertificateChain()
+              && secrets_[config.name()]->getPrivateKey() == secret->getPrivateKey()) {
+            // Certificate chain and private key are same as locally cached. No need to update
+            ENVOY_LOG(debug, "sds: no need to update '{}' skipped", config.name());
+            return false;
+          }
+        }
 
-    if (&server_.clusterManager() != nullptr && &server_.listenerManager() != nullptr) {
-      if(!server_.clusterManager().sdsSecretUpdated(config.name())) {
+        auto old_secret = secrets_[config.name()];
+        secrets_[config.name()] = secret;
+
+        if (&server_.clusterManager() != nullptr && &server_.listenerManager() != nullptr) {
+          // Create pending cluster or update secret
+          if (!server_.clusterManager().sdsSecretUpdated(config.name())) {
+            // In case of failure, revert back to the previous secret
+            secrets_[config.name()] = old_secret;
+            return false;
+          }
+
+          // Create pending listener or update secret
+          if (!server_.listenerManager().sdsSecretUpdated(config.name())) {
+            // In case of failure, revert back to the previous secret
+            secrets_[config.name()] = old_secret;
+            return false;
+          }
+        }
       }
-
-      if(!server_.listenerManager().sdsSecretUpdated(config.name())) {
-      }
-    }
-
-  } else if (config.has_session_ticket_keys()) {
-    return false;
-  } else {
-    return false;
+      break;
+    case envoy::api::v2::auth::Secret::kSessionTicketKeys:
+      NOT_IMPLEMENTED;
+    default:
+      ENVOY_LOG(error, "sds: no need to update '{}' skipped", config.name());
+      return false;
   }
 
   return true;
