@@ -16,10 +16,10 @@
 #include "envoy/secret/secret_manager.h"
 
 namespace Envoy {
-namespace Server {
+namespace Secret {
 
-SdsApi::SdsApi(Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
-               Envoy::Server::SecretManager& secret_manager)
+SdsApi::SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
+               SecretManager& secret_manager)
     : server_(server),
       sds_config_([&sds_config] {
         envoy::api::v2::core::ConfigSource cfg;
@@ -80,5 +80,5 @@ void SdsApi::runInitializeCallbackIfAny() {
   }
 }
 
-}  // namespace Server
+}  // namespace Secret
 }  // namespace Envoy

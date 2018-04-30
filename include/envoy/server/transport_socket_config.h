@@ -30,9 +30,9 @@ public:
   virtual Stats::Scope& statsScope() const PURE;
 
   /**
-   * @return Server::SecretManager& reference of the SecretMangaer instance.
+   * @return Secret::SecretManager& reference of the SecretMangaer instance.
    */
-  virtual Server::SecretManager& secretManager() PURE;
+  virtual Secret::SecretManager& secretManager() PURE;
 };
 
 class TransportSocketConfigFactory {

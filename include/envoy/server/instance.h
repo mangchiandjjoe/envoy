@@ -117,7 +117,7 @@ public:
   /**
    * @return the server's secret manager
    */
-  virtual SecretManager& secretManager() PURE;
+  virtual Secret::SecretManager& secretManager() PURE;
 
   /**
    * @return the server's CLI options.

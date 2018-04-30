@@ -19,9 +19,9 @@
 #include "common/common/logger.h"
 
 namespace Envoy {
-namespace Server {
+namespace Secret {
 
-SecretManagerImpl::SecretManagerImpl(Instance& server,
+SecretManagerImpl::SecretManagerImpl(Server::Instance& server,
                                      envoy::config::bootstrap::v2::SecretManager config)
     : server_(server),
       config_(config) {
@@ -49,13 +49,13 @@ bool SecretManagerImpl::addOrUpdateSecret(const envoy::api::v2::auth::Secret& co
                                                    true);
     std::string private_key = readDataSource(config.tls_certificate().private_key(), true);
 
-    secrets_[config.name()] = std::make_shared<Ssl::SecretImpl>(
-        Ssl::SecretImpl(certificate_chain, private_key, is_static));
+    secrets_[config.name()] = SecretPtr(new SecretImpl(certificate_chain, private_key, is_static));
 
     if (&server_.clusterManager() != nullptr && &server_.listenerManager() != nullptr) {
-      if (!server_.clusterManager().sdsSecretUpdated(config.name())
-          || !server_.listenerManager().sdsSecretUpdated(config.name())) {
-        // TODO (jaebong) secret was not completely initialized. Need to try it again.
+      if(!server_.clusterManager().sdsSecretUpdated(config.name())) {
+      }
+
+      if(!server_.listenerManager().sdsSecretUpdated(config.name())) {
       }
     }
 
@@ -68,18 +68,6 @@ bool SecretManagerImpl::addOrUpdateSecret(const envoy::api::v2::auth::Secret& co
   return true;
 }
 
-SecretManager::SecretInfoMap SecretManagerImpl::secrets() {
-  std::shared_lock < std::shared_timed_mutex > rhs(mutex_);
-
-  SecretManager::SecretInfoMap ret;
-
-  for (const auto secret : secrets_) {
-    ret[secret.first] = secret.second;
-  }
-
-  return ret;
-}
-
 bool SecretManagerImpl::removeSecret(const std::string& name) {
   std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
 
@@ -90,9 +78,7 @@ bool SecretManagerImpl::removeSecret(const std::string& name) {
   return false;
 }
 
-std::shared_ptr<Ssl::Secret> SecretManagerImpl::getSecret(const std::string& name, bool is_static) {
-  // std::shared_lock < std::shared_timed_mutex > rhs(mutex_);
-
+SecretPtr SecretManagerImpl::getSecret(const std::string& name, bool is_static) {
   if (secrets_.find(name) != secrets_.end()) {
     return secrets_[name]->isStatic() == is_static ? secrets_[name] : nullptr;
   }
@@ -125,5 +111,5 @@ const std::string SecretManagerImpl::getDataSourcePath(
           source.filename() : "";
 }
 
-}  // namespace Upstream
+}  // namespace Secret
 }  // namespace Envoy

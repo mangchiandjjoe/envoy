@@ -226,7 +226,7 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
                                  const envoy::api::v2::core::BindConfig& bind_config,
                                  Runtime::Loader& runtime, Stats::Store& stats,
                                  Ssl::ContextManager& ssl_context_manager, bool added_via_api,
-                                 Server::SecretManager& secret_manager)
+                                 Secret::SecretManager& secret_manager)
     : runtime_(runtime), name_(config.name()), type_(config.type()),
       max_requests_per_connection_(
           PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, max_requests_per_connection, 0)),
@@ -363,7 +363,7 @@ ClusterSharedPtr ClusterImplBase::create(const envoy::api::v2::Cluster& cluster,
                                          const LocalInfo::LocalInfo& local_info,
                                          Outlier::EventLoggerSharedPtr outlier_event_logger,
                                          bool added_via_api,
-										 Server::SecretManager& secret_manager) {
+                                         Secret::SecretManager& secret_manager) {
   std::unique_ptr<ClusterImplBase> new_cluster;
 
   // We make this a shared pointer to deal with the distinct ownership
@@ -439,7 +439,7 @@ ClusterImplBase::ClusterImplBase(const envoy::api::v2::Cluster& cluster,
                                  const envoy::api::v2::core::BindConfig& bind_config,
                                  Runtime::Loader& runtime, Stats::Store& stats,
                                  Ssl::ContextManager& ssl_context_manager, bool added_via_api,
-                                 Server::SecretManager& secret_manager)
+                                 Secret::SecretManager& secret_manager)
     : runtime_(runtime), info_(new ClusterInfoImpl(cluster, bind_config, runtime, stats,
                                                    ssl_context_manager, added_via_api, secret_manager)),
 												   secret_manager_(secret_manager) {
@@ -654,7 +654,7 @@ StaticClusterImpl::StaticClusterImpl(const envoy::api::v2::Cluster& cluster,
                                      Runtime::Loader& runtime, Stats::Store& stats,
                                      Ssl::ContextManager& ssl_context_manager, ClusterManager& cm,
                                      bool added_via_api,
-									 Server::SecretManager& secret_manager)
+                                     Secret::SecretManager& secret_manager)
     : ClusterImplBase(cluster, cm.bindConfig(), runtime, stats, ssl_context_manager,
 	  			added_via_api, secret_manager),
       initial_hosts_(new HostVector()) {
@@ -806,7 +806,7 @@ StrictDnsClusterImpl::StrictDnsClusterImpl(const envoy::api::v2::Cluster& cluste
                                            Network::DnsResolverSharedPtr dns_resolver,
                                            ClusterManager& cm, Event::Dispatcher& dispatcher,
                                            bool added_via_api,
-										   Server::SecretManager& secret_manager)
+                                           Secret::SecretManager& secret_manager)
     : BaseDynamicClusterImpl(cluster, cm.bindConfig(), runtime, stats, ssl_context_manager,
                              added_via_api, secret_manager),
       dns_resolver_(dns_resolver),

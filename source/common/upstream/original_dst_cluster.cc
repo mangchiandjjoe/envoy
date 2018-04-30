@@ -97,7 +97,7 @@ OriginalDstCluster::OriginalDstCluster(const envoy::api::v2::Cluster& config,
                                        Runtime::Loader& runtime, Stats::Store& stats,
                                        Ssl::ContextManager& ssl_context_manager, ClusterManager& cm,
                                        Event::Dispatcher& dispatcher, bool added_via_api,
-                                       Server::SecretManager& secret_manager)
+                                       Secret::SecretManager& secret_manager)
     : ClusterImplBase(config, cm.bindConfig(), runtime, stats, ssl_context_manager, added_via_api, secret_manager),
       dispatcher_(dispatcher), cleanup_interval_ms_(std::chrono::milliseconds(
                                    PROTOBUF_GET_MS_OR_DEFAULT(config, cleanup_interval, 5000))),

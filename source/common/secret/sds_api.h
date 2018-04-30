@@ -13,7 +13,7 @@
 #include "common/common/logger.h"
 
 namespace Envoy {
-namespace Server {
+namespace Secret {
 
 /**
  * SDS API implementation that fetches via Subscription.
@@ -23,8 +23,8 @@ class SdsApi : public Init::Target,
                       Logger::Loggable<Logger::Id::upstream> {
 
  public:
-  SdsApi(Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
-         Envoy::Server::SecretManager& secret_manager);
+  SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
+         SecretManager& secret_manager);
 
   virtual ~SdsApi() {
   }
@@ -59,9 +59,9 @@ class SdsApi : public Init::Target,
   void runInitializeCallbackIfAny();
 
  private:
-  Instance& server_;
+  Server::Instance& server_;
   const envoy::api::v2::core::ConfigSource sds_config_;
-  Envoy::Server::SecretManager& secret_manager_;
+  SecretManager& secret_manager_;
 
 
   std::unique_ptr<Config::Subscription<envoy::api::v2::auth::Secret>> subscription_;
@@ -77,5 +77,5 @@ class SdsApi : public Init::Target,
   std::vector<std::string> session_ticket_keys_;
 };
 
-}  // namespace Server
+}  // namespace Secret
 }  // namespace Envoy

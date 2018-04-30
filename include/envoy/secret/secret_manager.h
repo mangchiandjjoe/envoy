@@ -10,7 +10,7 @@
 #include "common/protobuf/protobuf.h"
 
 namespace Envoy {
-namespace Server {
+namespace Secret {
 
 /**
  * A manager for all secrets and all threaded connection handling workers.
@@ -22,11 +22,9 @@ class SecretManager {
 
   virtual bool addOrUpdateSecret(const envoy::api::v2::auth::Secret& config, bool is_static) PURE;
 
-  typedef std::unordered_map<std::string, std::shared_ptr<Ssl::Secret>> SecretInfoMap;
+  typedef std::unordered_map<std::string, SecretPtr> SecretInfoMap;
 
-  virtual SecretInfoMap secrets() PURE;
-
-  virtual std::shared_ptr<Ssl::Secret> getSecret(const std::string& name, bool is_static) PURE;
+  virtual SecretPtr getSecret(const std::string& name, bool is_static) PURE;
 
   virtual bool removeSecret(const std::string& name) PURE;
 
@@ -34,5 +32,5 @@ class SecretManager {
 
 };
 
-}  // namespace Server
+}  // namespace Secret
 }  // namespace Envoy

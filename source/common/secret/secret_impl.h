@@ -4,7 +4,7 @@
 #include "envoy/api/v2/auth/cert.pb.h"
 
 namespace Envoy {
-namespace Ssl {
+namespace Secret {
 
 class SecretImpl : public Secret {
  public:
@@ -39,5 +39,5 @@ class SecretImpl : public Secret {
   bool is_static_;
 };
 
-}  // namespace Upstream
+}  // namespace Secret
 }  // namespace Envoy

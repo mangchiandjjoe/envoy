@@ -13,7 +13,7 @@
 #include "openssl/ssl.h"
 
 namespace Envoy {
-namespace Ssl {
+namespace Secret {
 
 SecretImpl::SecretImpl(const std::string& certificate_chain,
                        const std::string& private_key, bool is_static)
@@ -23,5 +23,5 @@ SecretImpl::SecretImpl(const std::string& certificate_chain,
 
 }
 
-}  // namespace Upstream
+}  // namespace Secret
 }  // namespace Envoy

@@ -32,7 +32,7 @@ public:
                     Stats::Store& stats, Ssl::ContextManager& ssl_context_manager,
                     Network::DnsResolverSharedPtr dns_resolver, ThreadLocal::SlotAllocator& tls,
                     ClusterManager& cm, Event::Dispatcher& dispatcher, bool added_via_api,
-                    Server::SecretManager& secret_manager);
+                    Secret::SecretManager& secret_manager);
 
   ~LogicalDnsCluster();
 

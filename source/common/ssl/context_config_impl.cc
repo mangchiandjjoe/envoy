@@ -34,7 +34,7 @@ const std::string ContextConfigImpl::DEFAULT_CIPHER_SUITES =
 
 const std::string ContextConfigImpl::DEFAULT_ECDH_CURVES = "X25519:P-256";
 
-ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config, Server::SecretManager& secret_manager)
+ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config, Secret::SecretManager& secret_manager)
     : secret_manager_(secret_manager), alpn_protocols_(RepeatedPtrUtil::join(config.alpn_protocols(), ",")),
       alt_alpn_protocols_(config.deprecated_v1().alt_alpn_protocols()),
       cipher_suites_(StringUtil::nonEmptyStringOrDefault(
@@ -122,7 +122,7 @@ unsigned ContextConfigImpl::tlsVersionFromProto(
 }
 
 ClientContextConfigImpl::ClientContextConfigImpl(
-    const envoy::api::v2::auth::UpstreamTlsContext& config, Server::SecretManager& secret_manager)
+    const envoy::api::v2::auth::UpstreamTlsContext& config, Secret::SecretManager& secret_manager)
     : ContextConfigImpl(config.common_tls_context(), secret_manager), server_name_indication_(config.sni()) {
   // TODO(PiotrSikora): Support multiple TLS certificates.
   if (config.common_tls_context().tls_certificates().size() > 1) {
@@ -130,7 +130,7 @@ ClientContextConfigImpl::ClientContextConfigImpl(
   }
 }
 
-ClientContextConfigImpl::ClientContextConfigImpl(const Json::Object& config, Server::SecretManager& secret_manager)
+ClientContextConfigImpl::ClientContextConfigImpl(const Json::Object& config, Secret::SecretManager& secret_manager)
     : ClientContextConfigImpl([&config] {
         envoy::api::v2::auth::UpstreamTlsContext upstream_tls_context;
         Config::TlsContextJson::translateUpstreamTlsContext(config, upstream_tls_context);
@@ -138,7 +138,7 @@ ClientContextConfigImpl::ClientContextConfigImpl(const Json::Object& config, Ser
       }(), secret_manager) {}
 
 ServerContextConfigImpl::ServerContextConfigImpl(
-    const envoy::api::v2::auth::DownstreamTlsContext& config, Server::SecretManager& secret_manager)
+    const envoy::api::v2::auth::DownstreamTlsContext& config, Secret::SecretManager& secret_manager)
     : ContextConfigImpl(config.common_tls_context(), secret_manager),
       require_client_certificate_(
           PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, require_client_certificate, false)),
@@ -169,7 +169,7 @@ ServerContextConfigImpl::ServerContextConfigImpl(
   }
 }
 
-ServerContextConfigImpl::ServerContextConfigImpl(const Json::Object& config, Server::SecretManager& secret_manager)
+ServerContextConfigImpl::ServerContextConfigImpl(const Json::Object& config, Secret::SecretManager& secret_manager)
     : ServerContextConfigImpl([&config] {
         envoy::api::v2::auth::DownstreamTlsContext downstream_tls_context;
         Config::TlsContextJson::translateDownstreamTlsContext(config, downstream_tls_context);

@@ -10,7 +10,7 @@
 #include "common/config/tls_context_json.h"
 
 namespace Envoy {
-namespace Server {
+namespace Secret {
 
 SdsSubscription::SdsSubscription(
     Config::SubscriptionStats stats,
@@ -112,5 +112,5 @@ void SdsSubscription::onFetchFailure(const EnvoyException* e) {
   }
 }
 
-}  // namespace Server
+}  // namespace Secret
 }  // namespace Envoy

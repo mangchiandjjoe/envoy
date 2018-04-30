@@ -11,7 +11,7 @@
 #include "envoy/ssl/context.h"
 
 namespace Envoy {
-namespace Ssl {
+namespace Secret {
 
 class SecretConfig {
  public:
@@ -31,7 +31,7 @@ class Secret {
   virtual bool isStatic() PURE;
 };
 
-typedef std::unique_ptr<Secret> SecretPtr;
+typedef std::shared_ptr<Secret> SecretPtr;
 
 /**
  * Thrown when there is a runtime error creating/binding a secret.
@@ -43,5 +43,5 @@ class CreateSecretException : public EnvoyException {
   }
 };
 
-}  // namespace Network
+}  // namespace Secret
 }  // namespace Envoy

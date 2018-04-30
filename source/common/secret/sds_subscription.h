@@ -11,7 +11,7 @@
 #include "common/http/rest_api_fetcher.h"
 
 namespace Envoy {
-namespace Server {
+namespace Secret {
 
 /**
  * Subscription implementation that reads host information from the v1 REST Service Discovery
@@ -63,5 +63,5 @@ class SdsSubscription : public Http::RestApiFetcher,
   const LocalInfo::LocalInfo& local_info_;
 };
 
-}  // namespace Server
+}  // namespace Secret
 }  // namespace Envoy

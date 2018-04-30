@@ -7,7 +7,7 @@ ValidationClusterManagerFactory::ValidationClusterManagerFactory(
     Runtime::Loader& runtime, Stats::Store& stats, ThreadLocal::Instance& tls,
     Runtime::RandomGenerator& random, Network::DnsResolverSharedPtr dns_resolver,
     Ssl::ContextManager& ssl_context_manager, Event::Dispatcher& main_thread_dispatcher,
-    const LocalInfo::LocalInfo& local_info, Server::SecretManager& secret_manager)
+    const LocalInfo::LocalInfo& local_info, Secret::SecretManager& secret_manager)
     : ProdClusterManagerFactory(runtime, stats, tls, random, dns_resolver, ssl_context_manager,
                                 main_thread_dispatcher, local_info, secret_manager) {}
 
@@ -15,7 +15,7 @@ ClusterManagerPtr ValidationClusterManagerFactory::clusterManagerFromProto(
     const envoy::config::bootstrap::v2::Bootstrap& bootstrap, Stats::Store& stats,
     ThreadLocal::Instance& tls, Runtime::Loader& runtime, Runtime::RandomGenerator& random,
     const LocalInfo::LocalInfo& local_info, AccessLog::AccessLogManager& log_manager,
-    Server::SecretManager& secret_manager) {
+    Secret::SecretManager& secret_manager) {
   return ClusterManagerPtr{new ValidationClusterManager(bootstrap, *this, stats, tls, runtime,
                                                         random, local_info, log_manager,
                                                         main_thread_dispatcher_, secret_manager)};
@@ -35,7 +35,7 @@ ValidationClusterManager::ValidationClusterManager(
     Stats::Store& stats, ThreadLocal::Instance& tls, Runtime::Loader& runtime,
     Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
     AccessLog::AccessLogManager& log_manager, Event::Dispatcher& main_thread_dispatcher,
-    Server::SecretManager& secret_manager)
+    Secret::SecretManager& secret_manager)
     : ClusterManagerImpl(bootstrap, factory, stats, tls, runtime, random, local_info, log_manager,
                          main_thread_dispatcher, secret_manager) {}
 

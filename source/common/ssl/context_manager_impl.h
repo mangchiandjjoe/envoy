@@ -21,7 +21,7 @@ namespace Ssl {
  */
 class ContextManagerImpl final : public ContextManager {
 public:
-  ContextManagerImpl(Runtime::Loader& runtime, Server::SecretManager& secret_manager) : runtime_(runtime), secret_manager_(secret_manager) {}
+  ContextManagerImpl(Runtime::Loader& runtime, Secret::SecretManager& secret_manager) : runtime_(runtime), secret_manager_(secret_manager) {}
   ~ContextManagerImpl();
 
   /**
@@ -35,7 +35,7 @@ public:
   /**
    * Return the secret manager
    */
-  Server::SecretManager& secretManager() { return secret_manager_; }
+  Secret::SecretManager& secretManager() { return secret_manager_; }
 
   // Ssl::ContextManager
   Ssl::ClientContextPtr createSslClientContext(Stats::Scope& scope,
@@ -58,7 +58,7 @@ private:
   mutable std::shared_timed_mutex contexts_lock_;
   std::unordered_map<std::string, std::unordered_map<std::string, ServerContext*>> map_exact_;
   std::unordered_map<std::string, std::unordered_map<std::string, ServerContext*>> map_wildcard_;
-  Server::SecretManager& secret_manager_;
+  Secret::SecretManager& secret_manager_;
 };
 
 } // namespace Ssl

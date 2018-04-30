@@ -72,7 +72,7 @@ public:
   HotRestart& hotRestart() override { NOT_IMPLEMENTED; }
   Init::Manager& initManager() override { return init_manager_; }
   ListenerManager& listenerManager() override { return listener_manager_; }
-  SecretManager& secretManager() override { return *secret_manager_; }
+  Secret::SecretManager& secretManager() override { return *secret_manager_; }
   Runtime::RandomGenerator& random() override { return random_generator_; }
   RateLimit::ClientPtr
   rateLimitClient(const absl::optional<std::chrono::milliseconds>& timeout) override {
@@ -142,7 +142,7 @@ private:
   std::unique_ptr<Upstream::ValidationClusterManagerFactory> cluster_manager_factory_;
   InitManagerImpl init_manager_;
   ListenerManagerImpl listener_manager_;
-  std::unique_ptr<SecretManager> secret_manager_;
+  std::unique_ptr<Secret::SecretManager> secret_manager_;
 };
 
 } // namespace Server

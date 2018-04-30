@@ -14,11 +14,11 @@
 #include "common/secret/sds_api.h"
 
 namespace Envoy {
-namespace Server {
+namespace Secret {
 
 class SecretManagerImpl : public SecretManager {
  public:
-  SecretManagerImpl(Instance& server,
+  SecretManagerImpl(Server::Instance& server,
                     envoy::config::bootstrap::v2::SecretManager config);
 
   virtual ~SecretManagerImpl() {
@@ -26,9 +26,7 @@ class SecretManagerImpl : public SecretManager {
 
   bool addOrUpdateSecret(const envoy::api::v2::auth::Secret& config, bool is_static) override;
 
-  std::shared_ptr<Ssl::Secret> getSecret(const std::string& name, bool is_static) override;
-
-  SecretInfoMap secrets() override;
+  SecretPtr getSecret(const std::string& name, bool is_static) override;
 
   bool removeSecret(const std::string& name) override;
 
@@ -44,7 +42,7 @@ class SecretManagerImpl : public SecretManager {
       const envoy::api::v2::core::DataSource& source);
 
  private:
-  Instance& server_;
+  Server::Instance& server_;
   SecretInfoMap secrets_;
   envoy::config::bootstrap::v2::SecretManager config_;
   std::unordered_map<std::size_t, std::unique_ptr<SdsApi>> sds_apis_;
@@ -53,5 +51,5 @@ class SecretManagerImpl : public SecretManager {
   mutable std::shared_timed_mutex mutex_;
 };
 
-}  // namespace Server
+}  // namespace Secret
 }  // namespace Envoy

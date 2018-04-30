@@ -286,7 +286,7 @@ public:
    */
   ListenerImpl(const envoy::api::v2::Listener& config, ListenerManagerImpl& parent,
                const std::string& name, bool modifiable, bool workers_started, uint64_t hash,
-               Server::SecretManager& secret_manager);
+               Secret::SecretManager& secret_manager);
   ~ListenerImpl();
 
   /**
@@ -376,7 +376,7 @@ public:
 
   bool refreshTransportSocketFactory(const std::string sds_secret_name);
 
-  Server::SecretManager& secretManager() override { return secret_manager_; }
+  Secret::SecretManager& secretManager() override { return secret_manager_; }
 private:
   ListenerManagerImpl& parent_;
   Network::Address::InstanceConstSharedPtr address_;
@@ -403,7 +403,7 @@ private:
   const envoy::api::v2::core::Metadata metadata_;
   Network::Socket::OptionsSharedPtr listen_socket_options_;
   mutable std::shared_timed_mutex mutex_;
-  Server::SecretManager& secret_manager_;
+  Secret::SecretManager& secret_manager_;
 };
 
 } // namespace Server

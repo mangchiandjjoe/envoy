@@ -52,7 +52,7 @@ public:
   unsigned maxProtocolVersion() const override { return max_protocol_version_; };
 
 protected:
-  ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config, Server::SecretManager& secret_manager);
+  ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config, Secret::SecretManager& secret_manager);
 
 private:
   static unsigned
@@ -62,7 +62,7 @@ private:
   static const std::string DEFAULT_CIPHER_SUITES;
   static const std::string DEFAULT_ECDH_CURVES;
 
-  Server::SecretManager& secret_manager_;
+  Secret::SecretManager& secret_manager_;
 
   const std::string alpn_protocols_;
   const std::string alt_alpn_protocols_;
@@ -86,8 +86,8 @@ private:
 
 class ClientContextConfigImpl : public ContextConfigImpl, public ClientContextConfig {
 public:
-  explicit ClientContextConfigImpl(const envoy::api::v2::auth::UpstreamTlsContext& config, Server::SecretManager& secret_manager);
-  explicit ClientContextConfigImpl(const Json::Object& config, Server::SecretManager& secret_manager);
+  explicit ClientContextConfigImpl(const envoy::api::v2::auth::UpstreamTlsContext& config, Secret::SecretManager& secret_manager);
+  explicit ClientContextConfigImpl(const Json::Object& config, Secret::SecretManager& secret_manager);
 
   // Ssl::ClientContextConfig
   const std::string& serverNameIndication() const override { return server_name_indication_; }
@@ -98,8 +98,8 @@ private:
 
 class ServerContextConfigImpl : public ContextConfigImpl, public ServerContextConfig {
 public:
-  explicit ServerContextConfigImpl(const envoy::api::v2::auth::DownstreamTlsContext& config, Server::SecretManager& secret_manager);
-  explicit ServerContextConfigImpl(const Json::Object& config, Server::SecretManager& secret_manager);
+  explicit ServerContextConfigImpl(const envoy::api::v2::auth::DownstreamTlsContext& config, Secret::SecretManager& secret_manager);
+  explicit ServerContextConfigImpl(const Json::Object& config, Secret::SecretManager& secret_manager);
 
   // Ssl::ServerContextConfig
   bool requireClientCertificate() const override { return require_client_certificate_; }

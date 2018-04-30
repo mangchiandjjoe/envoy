@@ -39,7 +39,7 @@ public:
                             Ssl::ContextManager& ssl_context_manager,
                             Event::Dispatcher& main_thread_dispatcher,
                             const LocalInfo::LocalInfo& local_info,
-                            Server::SecretManager& secret_manager)
+                            Secret::SecretManager& secret_manager)
       : main_thread_dispatcher_(main_thread_dispatcher), runtime_(runtime), stats_(stats),
         tls_(tls), random_(random), dns_resolver_(dns_resolver),
         ssl_context_manager_(ssl_context_manager), local_info_(local_info),
@@ -51,7 +51,7 @@ public:
                           Stats::Store& stats, ThreadLocal::Instance& tls, Runtime::Loader& runtime,
                           Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
                           AccessLog::AccessLogManager& log_manager,
-                          Server::SecretManager& secret_manager) override;
+                          Secret::SecretManager& secret_manager) override;
   Http::ConnectionPool::InstancePtr
   allocateConnPool(Event::Dispatcher& dispatcher, HostConstSharedPtr host,
                    ResourcePriority priority, Http::Protocol protocol,
@@ -74,7 +74,7 @@ private:
   Network::DnsResolverSharedPtr dns_resolver_;
   Ssl::ContextManager& ssl_context_manager_;
   const LocalInfo::LocalInfo& local_info_;
-  Server::SecretManager& secret_manager_;
+  Secret::SecretManager& secret_manager_;
 };
 
 /**
@@ -158,7 +158,7 @@ public:
                      Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
                      AccessLog::AccessLogManager& log_manager,
                      Event::Dispatcher& main_thread_dispatcher,
-                     Server::SecretManager& secret_manager);
+                     Secret::SecretManager& secret_manager);
 
   /**
    * Handles update sds secret
@@ -369,7 +369,7 @@ private:
   // The name of the local cluster of this Envoy instance if defined, else the empty string.
   std::string local_cluster_name_;
   Grpc::AsyncClientManagerPtr async_client_manager_;
-  Server::SecretManager& secret_manager_;
+  Secret::SecretManager& secret_manager_;
 
   // If all required information are not ready, creation request will be added
   // to the pending_creation_listener_
