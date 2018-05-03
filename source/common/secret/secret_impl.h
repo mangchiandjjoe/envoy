@@ -9,9 +9,13 @@ namespace Secret {
 
 class SecretImpl : public Secret, Logger::Loggable<Logger::Id::upstream> {
  public:
-  SecretImpl(const envoy::api::v2::auth::Secret& config, bool is_static);
+  SecretImpl(const envoy::api::v2::auth::Secret& config);
 
   virtual ~SecretImpl() {
+  }
+
+  const std::string getName() override {
+    return name_;
   }
 
   const std::string getCertificateChain() override {
@@ -20,10 +24,6 @@ class SecretImpl : public Secret, Logger::Loggable<Logger::Id::upstream> {
 
   const std::string getPrivateKey() override {
     return private_key_;
-  }
-
-  bool isStatic() override {
-    return is_static_;
   }
 
  private:
@@ -35,7 +35,6 @@ class SecretImpl : public Secret, Logger::Loggable<Logger::Id::upstream> {
   std::string name_;
   std::string certificate_chain_;
   std::string private_key_;
-  bool is_static_;
 };
 
 }  // namespace Secret

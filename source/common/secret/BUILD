@@ -12,7 +12,6 @@ envoy_cc_library(
     name = "secret_impl_lib",
     srcs = ["secret_impl.cc"],
     hdrs = ["secret_impl.h"],
-    external_deps = ["ssl"],
     deps = [
         "//source/common/ssl:context_config_lib",
         "//source/common/ssl:context_lib",
@@ -45,6 +44,7 @@ envoy_cc_library(
     hdrs = ["sds_api.h"],
     deps = [
         ":sds_subscription_lib",
+        ":secret_impl_lib",
         "//include/envoy/config:subscription_interface",
         "//include/envoy/secret:secret_interface",
         "//include/envoy/server:instance_interface",

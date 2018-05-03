@@ -1,7 +1,5 @@
-#include <envoy/secret/secret.h>
 
 #include <unordered_map>
-#include <set>
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/api/v2/auth/cert.pb.validate.h"
@@ -14,6 +12,10 @@
 #include "common/protobuf/utility.h"
 #include "common/secret/sds_api.h"
 #include "common/secret/sds_subscription.h"
+#include "common/secret/secret_impl.h"
+#include "common/common/logger.h"
+
+
 
 namespace Envoy {
 namespace Secret {
@@ -26,13 +28,13 @@ SdsApi::SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSourc
         cfg.CopyFrom(sds_config);
         return cfg;
       }()),
+      sds_config_source_hash_(SecretManager::configSourceHash(sds_config)),
       secret_manager_(secret_manager) {
   server_.initManager().registerTarget(*this);
 }
 
 void SdsApi::initialize(std::function<void()> callback) {
   initialize_callback_ = callback;
-
   subscription_ = Envoy::Config::SubscriptionFactory::subscriptionFromConfigSource<
       envoy::api::v2::auth::Secret>(
       sds_config_, server_.localInfo().node(), server_.dispatcher(), server_.clusterManager(),
@@ -53,29 +55,21 @@ void SdsApi::initialize(std::function<void()> callback) {
 }
 
 void SdsApi::onConfigUpdate(const ResourceVector& resources) {
-  for (const auto& secret : resources) {
-    MessageUtil::validate(secret);
-  }
+  SecretInfoVector secrets;
 
-  std::set<std::string> secrets_to_be_removed;
-  for (const auto& secret : secret_manager_.secrets()) {
-    if(!secret.second->isStatic()) {
-      secrets_to_be_removed.insert(secret.first);
+  for (const auto& resource : resources) {
+    switch (resource.type_case()) {
+      case envoy::api::v2::auth::Secret::kTlsCertificate:
+        secrets.push_back(SecretPtr(new SecretImpl(resource)));
+        break;
+      case envoy::api::v2::auth::Secret::kSessionTicketKeys:
+        NOT_IMPLEMENTED
+      default:
+        throw EnvoyException("sds: invalid configuration");
     }
   }
 
-  for (const auto& secret : resources) {
-    // All secrets downloaded through the SdsApi are dynamic
-    secrets_to_be_removed.erase(secret.name());
-    if (secret_manager_.addOrUpdateSecret(secret, false)) {
-      ENVOY_LOG(info, "sds: add/update secret '{}'", secret.name());
-    }
-  }
-
-  for(const auto& name : secrets_to_be_removed) {
-    secret_manager_.removeSecret(name);
-    ENVOY_LOG(info, "sds: removed secret '{}'", name);
-  }
+  secret_manager_.addOrUpdateDynamicSecrets(sds_config_source_hash_, secrets);
 
   runInitializeCallbackIfAny();
 }

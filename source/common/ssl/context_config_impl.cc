@@ -34,7 +34,8 @@ const std::string ContextConfigImpl::DEFAULT_CIPHER_SUITES =
 
 const std::string ContextConfigImpl::DEFAULT_ECDH_CURVES = "X25519:P-256";
 
-ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config, Secret::SecretManager& secret_manager)
+ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config,
+                                     Secret::SecretManager& secret_manager)
     : secret_manager_(secret_manager), alpn_protocols_(RepeatedPtrUtil::join(config.alpn_protocols(), ",")),
       alt_alpn_protocols_(config.deprecated_v1().alt_alpn_protocols()),
       cipher_suites_(StringUtil::nonEmptyStringOrDefault(
@@ -47,41 +48,50 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           Config::DataSource::read(config.validation_context().crl(), true)),
       certificate_revocation_list_path_(
           Config::DataSource::getPath(config.validation_context().crl())),
-      cert_chain_(
-          config.tls_certificates().empty()
-              ? ""
-              : Config::DataSource::read(config.tls_certificates()[0].certificate_chain(), true)),
+      cert_chain_([&config, &secret_manager] {
+        if(!config.tls_certificates().empty()) {
+          return Config::DataSource::read(config.tls_certificates()[0].certificate_chain(), true);
+        } else if(config.tls_certificate_sds_secret_configs().empty()) {
+          return std::string("");
+        } else {
+          auto sds_secret_configs = config.tls_certificate_sds_secret_configs()[0];
+          Secret::SecretPtr secretPtr = (sds_secret_configs.has_sds_config()) ?
+          secret_manager.getDynamicSecret(Secret::SecretManager::configSourceHash(
+                  sds_secret_configs.sds_config()), sds_secret_configs.name()) :
+          secret_manager.getStaticSecret(sds_secret_configs.name());
+          return (secretPtr.get() != nullptr) ? secretPtr->getCertificateChain() : std::string("");
+        }
+      }()),
       cert_chain_path_(
           config.tls_certificates().empty()
               ? ""
               : Config::DataSource::getPath(config.tls_certificates()[0].certificate_chain())),
-      private_key_(
-          config.tls_certificates().empty()
-              ? ""
-              : Config::DataSource::read(config.tls_certificates()[0].private_key(), true)),
+      private_key_([&config, &secret_manager] {
+        if(!config.tls_certificates().empty()) {
+          return Config::DataSource::read(config.tls_certificates()[0].private_key(), true);
+        } else if(config.tls_certificate_sds_secret_configs().empty()) {
+          return std::string("");
+        } else {
+          auto sds_secret_configs = config.tls_certificate_sds_secret_configs()[0];
+          auto secretName = sds_secret_configs.name();
+          Secret::SecretPtr secretPtr;
+          if(sds_secret_configs.has_sds_config()) {
+            // dynamic sds secret
+            secretPtr = secret_manager.getDynamicSecret(
+                Secret::SecretManager::configSourceHash(
+                    sds_secret_configs.sds_config()
+                ), secretName);
+          } else {
+            // static sds secret
+            secretPtr = secret_manager.getStaticSecret(secretName);
+          }
+          return (secretPtr.get() != nullptr) ?  secretPtr->getPrivateKey() : std::string("");
+        }
+      }()),
       private_key_path_(
           config.tls_certificates().empty()
               ? ""
               : Config::DataSource::getPath(config.tls_certificates()[0].private_key())),
-      sds_secret_name_([&config, &secret_manager] {
-        if(config.tls_certificate_sds_secret_configs().empty()) {
-          return "";
-        } else {
-          // TODO(jaebong) Does SDS secret config need to be multiple?
-          if(config.tls_certificate_sds_secret_configs()[0].has_sds_config()) {
-            // register SDS ConfigSource to the SecretManager
-            secret_manager.addOrUpdateSdsConfigSource(config.tls_certificate_sds_secret_configs()[0].sds_config());
-          }
-          return config.tls_certificate_sds_secret_configs()[0].name().c_str();
-        }
-      }()),
-      static_sds_secret_([&config, &secret_manager] {
-        if(config.tls_certificate_sds_secret_configs().empty()) {
-          return false;
-        } else {
-          return not config.tls_certificate_sds_secret_configs()[0].has_sds_config();
-        }
-      }()),
       verify_subject_alt_name_list_(config.validation_context().verify_subject_alt_name().begin(),
                                     config.validation_context().verify_subject_alt_name().end()),
       verify_certificate_hash_(config.validation_context().verify_certificate_hash().empty()
@@ -163,8 +173,10 @@ ServerContextConfigImpl::ServerContextConfigImpl(
 
         return ret;
       }()) {
+
   // TODO(PiotrSikora): Support multiple TLS certificates.
-  if (config.common_tls_context().tls_certificates().size() != 1) {
+  if (config.common_tls_context().tls_certificates().size() != 1
+      && config.common_tls_context().tls_certificate_sds_secret_configs().size() != 1) {
     throw EnvoyException("A single TLS certificate is required for server contexts");
   }
 }

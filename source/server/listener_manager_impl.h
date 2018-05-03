@@ -92,14 +92,16 @@ struct ListenerManagerStats {
 class ListenerCreationInfo {
  public:
   ListenerCreationInfo(const envoy::api::v2::Listener& config, bool modifiable,
-                       const std::vector<std::pair<std::string, bool>> sds_secrets)
+                       const std::vector<std::string> static_secrets,
+                       const std::unordered_map<std::size_t, std::string> dynamic_secrets)
       : config_([&config] {
           envoy::api::v2::Listener cfg;
           cfg.CopyFrom(config);
           return cfg;
         }()),
         modifiable_(modifiable),
-        sds_secrets_(sds_secrets) {
+        static_secrets_(static_secrets),
+        dynamic_secrets_(dynamic_secrets) {
   }
 
   virtual ~ListenerCreationInfo() {
@@ -113,14 +115,19 @@ class ListenerCreationInfo {
     return modifiable_;
   }
 
-  const std::vector<std::pair<std::string, bool>>& getSdsSecrets() {
-    return sds_secrets_;
+  const std::vector<std::string>& getStaticSecrets() {
+    return static_secrets_;
+  }
+
+  const std::unordered_map<std::size_t, std::string>& getDynamicSecrets() {
+    return dynamic_secrets_;
   }
 
  private:
   const envoy::api::v2::Listener config_;
   bool modifiable_;
-  const std::vector<std::pair<std::string, bool>> sds_secrets_;
+  const std::vector<std::string> static_secrets_;
+  const std::unordered_map<std::size_t, std::string> dynamic_secrets_;
 };
 
 typedef std::unique_ptr<ListenerCreationInfo> ListenerCreationInfoPtr;

@@ -6,7 +6,6 @@
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/config/subscription.h"
 #include "envoy/init/init.h"
-#include "envoy/server/listener_manager.h"
 #include "envoy/server/instance.h"
 #include "envoy/secret/secret_manager.h"
 
@@ -16,11 +15,10 @@ namespace Envoy {
 namespace Secret {
 
 /**
- * SDS API implementation that fetches via Subscription.
+ * SDS API implementation that fetches secrets from SDS server via Subscription.
  */
-class SdsApi : public Init::Target,
-  Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret>,
-  Logger::Loggable<Logger::Id::upstream> {
+class SdsApi : public Init::Target, Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret>,
+    Logger::Loggable<Logger::Id::upstream> {
 
  public:
   SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
@@ -31,18 +29,6 @@ class SdsApi : public Init::Target,
 
   const std::string versionInfo() const {
     return subscription_->versionInfo();
-  }
-
-  const std::string getCertificateChain() {
-    return tls_certificate_certificate_chain_;
-  }
-
-  const std::string getPrivateKey() {
-    return tls_certificate_private_key_;
-  }
-
-  const std::vector<std::string>& getSessionTicketKeys() {
-    return session_ticket_keys_;
   }
 
   // Init::Target
@@ -58,21 +44,12 @@ class SdsApi : public Init::Target,
  private:
   void runInitializeCallbackIfAny();
 
- private:
   Server::Instance& server_;
   const envoy::api::v2::core::ConfigSource sds_config_;
+  const std::size_t sds_config_source_hash_;
   SecretManager& secret_manager_;
-
   std::unique_ptr<Config::Subscription<envoy::api::v2::auth::Secret>> subscription_;
   std::function<void()> initialize_callback_;
-
- private:
-  // tls_certificate
-  std::string tls_certificate_certificate_chain_;
-  std::string tls_certificate_private_key_;
-
-  // session_ticket_keys
-  std::vector<std::string> session_ticket_keys_;
 };
 
 }  // namespace Secret

@@ -339,7 +339,7 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
   }
 }
 
-// Refresh the TransportSocketFactory instance if sds_secret_name is in dynamic SDS configuration
+// TODO (jaebong) Refresh the TransportSocketFactory instance if sds_secret_name is in dynamic SDS configuration
 bool ClusterInfoImpl::refreshTransportSocketFactory(const std::string& sds_secret_name) {
   if (sds_secret_names_.find(sds_secret_name) != sds_secret_names_.end()) {
     auto& config_factory = Config::Utility::getAndCheckFactory<

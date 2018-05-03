@@ -308,17 +308,25 @@ private:
   typedef std::unique_ptr<ClusterData> ClusterDataPtr;
   typedef std::unordered_map<std::string, ClusterDataPtr> ClusterMap;
 
-  class ClusterCreationInfo {
+
+  class ClusterCreationInfo : public Logger::Loggable<Logger::Id::upstream> {
    public:
-    ClusterCreationInfo(
-        const envoy::api::v2::Cluster& config,
-        const std::vector<std::pair<std::string, bool>> sds_secrets)
+    ClusterCreationInfo(const envoy::api::v2::Cluster& config,
+                        bool added_via_api,
+                        ClusterMap& cluster_map,
+                        bool fromLoadCluster,
+                        const std::vector<std::string> static_secrets,
+                        const std::unordered_map<std::size_t, std::string> dynamic_secrets)
         : config_([&config] {
             envoy::api::v2::Cluster cfg;
             cfg.CopyFrom(config);
             return cfg;
           }()),
-          sds_secrets_(sds_secrets) {
+          added_via_api_(added_via_api),
+          cluster_map_(cluster_map),
+          from_load_cluster_function_(fromLoadCluster),
+          static_secrets_(static_secrets),
+          dynamic_secrets_(dynamic_secrets) {
     }
 
     virtual ~ClusterCreationInfo() {
@@ -328,13 +336,34 @@ private:
       return config_;
     }
 
-    const std::vector<std::pair<std::string, bool>>& getSdsSecrets() {
-      return sds_secrets_;
+    bool addedViaApi() {
+      return added_via_api_;
+    }
+
+    ClusterMap& clusterMap() {
+      return cluster_map_;
+    }
+
+    bool fromLoadClusterFunction() {
+      return from_load_cluster_function_;
+    }
+
+    const std::vector<std::string>& getStaticSecrets() {
+      return static_secrets_;
+    }
+
+    const std::unordered_map<std::size_t, std::string>& getDynamicSecrets() {
+
+      return dynamic_secrets_;
     }
 
    private:
     const envoy::api::v2::Cluster config_;
-    const std::vector<std::pair<std::string, bool>> sds_secrets_;
+    bool added_via_api_;
+    ClusterMap& cluster_map_;
+    bool from_load_cluster_function_;
+    const std::vector<std::string> static_secrets_;
+    const std::unordered_map<std::size_t, std::string> dynamic_secrets_;
   };
 
   typedef std::unique_ptr<ClusterCreationInfo> ClusterCreationInfoPtr;
@@ -349,6 +378,9 @@ private:
                                     const HostVector& hosts_added, const HostVector& hosts_removed);
   void postThreadLocalHealthFailure(const HostSharedPtr& host);
   void updateGauges();
+
+  bool checkSdsScrets(const envoy::api::v2::Cluster& config, bool added_via_api,
+                      ClusterMap& cluster_map, bool fromLoadCluster);
 
   ClusterManagerFactory& factory_;
   Runtime::Loader& runtime_;

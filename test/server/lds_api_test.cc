@@ -34,7 +34,9 @@ public:
     )EOF";
 
     Json::ObjectSharedPtr config = Json::Factory::loadFromString(config_json);
+
     envoy::api::v2::core::ConfigSource lds_config;
+
     Config::Utility::translateLdsConfig(*config, lds_config);
     if (v2_rest) {
       lds_config.mutable_api_config_source()->set_api_type(

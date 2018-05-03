@@ -83,17 +83,6 @@ public:
   virtual const std::string& privateKeyPath() const PURE;
 
   /**
-   * @return Name of the SDS secret. Lookup the secret from the SecretManager
-   * with the name
-   */
-  virtual const std::string& sdsSecretName() const PURE;
-
-  /**
-   * @return true if the SDS secret is defined in static_resources.
-   */
-  virtual bool isStaticSdsSecret() const PURE;
-
-  /**
    * @return The subject alt names to be verified, if enabled. Otherwise, ""
    */
   virtual const std::vector<std::string>& verifySubjectAltNameList() const PURE;

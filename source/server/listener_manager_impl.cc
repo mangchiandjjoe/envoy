@@ -375,8 +375,8 @@ bool ListenerManagerImpl::sdsSecretUpdated(const std::string sds_secret_name) {
   for (const auto& info : pending_creation_listeners_) {
     bool is_ready_to_create = true;
 
-    for (auto item : info.second->getSdsSecrets()) {
-      if (server_.secretManager().getSecret(item.first, item.second) == nullptr) {
+    for (auto item : info.second->getDynamicSecrets()) {
+      if (server_.secretManager().getDynamicSecret(item.first, item.second) == nullptr) {
         is_ready_to_create = false;
         break;
       }
@@ -392,7 +392,7 @@ bool ListenerManagerImpl::sdsSecretUpdated(const std::string sds_secret_name) {
           ENVOY_LOG(info, "Failed to crate a listner: {}", info.first);
         }
       } catch (EnvoyException& e) {
-        ENVOY_LOG(info, "failed to create a cluster: {} {}", info.second->getConfig().name(), e.what());
+        ENVOY_LOG(info, "failed to create a listner: {} {}", info.second->getConfig().name(), e.what());
       }
     }
   }
@@ -426,30 +426,38 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
   const uint64_t hash = MessageUtil::hash(config);
   ENVOY_LOG(debug, "begin add/update listener: name={} hash={}", name, hash);
 
-  std::vector<std::pair<std::string, bool>> sds_secret_names;
-  for (auto filter_chain : config.filter_chains()) {
-    if (filter_chain.has_tls_context()
-        && filter_chain.tls_context().has_common_tls_context()) {
-      auto common_tls_context = filter_chain.tls_context().common_tls_context();
-      for (auto sds_secrets_config : filter_chain.tls_context()
-          .common_tls_context().tls_certificate_sds_secret_configs()) {
-        // Register sds_config to the SecretManager. SecretManager starts
-        // downloading secrets from SDS server.
-        if (sds_secrets_config.has_sds_config()) {
-          this->server_.secretManager().addOrUpdateSdsConfigSource(
-              sds_secrets_config.sds_config());
-        }
+  // read list of static and dynamic secrets
+  std::vector<std::string> static_secrets;
+  std::unordered_map<std::size_t, std::string> dynamic_secrets;
 
-        sds_secret_names.push_back(
-            {sds_secrets_config.name(), !sds_secrets_config.has_sds_config()});
+  bool sds_secret_required = false;
+
+  for (auto filter_chain : config.filter_chains()) {
+    if (filter_chain.has_tls_context() && filter_chain.tls_context().has_common_tls_context()) {
+      for (auto sds_secret_config : filter_chain.tls_context().common_tls_context()
+          .tls_certificate_sds_secret_configs()) {
+        if (sds_secret_config.has_sds_config()) {
+          this->server_.secretManager().addOrUpdateSdsConfigSource(sds_secret_config.sds_config());
+          dynamic_secrets[Secret::SecretManager::configSourceHash(sds_secret_config.sds_config())] = sds_secret_config.name();
+        } else {
+          static_secrets.push_back(sds_secret_config.name());
+        }
       }
     }
   }
 
-  // Check all required SDS secrets were downloaded
-  bool sds_secret_required = false;
-  for (const auto& sds_secret : sds_secret_names) {
-    if (this->server_.secretManager().getSecret(sds_secret.first, sds_secret.second) == nullptr) {
+  // Check static secrets. If require static is not ready, throws exception.
+  for (const auto& name : static_secrets) {
+    if (this->server_.secretManager().getStaticSecret(name) == nullptr) {
+      throw Secret::EnvoyStaticSecretException(
+          fmt::format("cluster manager: static secret '{}' is not available.", name));
+    }
+  }
+
+  // Check dynamic secrets
+  for (const auto& dynamic_secret : dynamic_secrets) {
+    if (this->server_.secretManager().getDynamicSecret(dynamic_secret.first, dynamic_secret.second)
+        == nullptr) {
       sds_secret_required = true;
       break;
     }
@@ -461,7 +469,7 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
     // Add or update listener when all related sds secrets were arrived
 
     ListenerCreationInfoPtr info(
-        new ListenerCreationInfo(config, modifiable, sds_secret_names));
+        new ListenerCreationInfo(config, modifiable, static_secrets, dynamic_secrets));
     pending_creation_listeners_[hash] = std::move(info);
 
     ENVOY_LOG(
@@ -471,6 +479,7 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
 
     return true;
   }
+
 
   auto existing_active_listener = getListenerByName(active_listeners_, name);
   auto existing_warming_listener = getListenerByName(warming_listeners_, name);

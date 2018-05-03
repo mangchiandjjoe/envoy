@@ -41,8 +41,6 @@ public:
   const std::string& privateKeyPath() const override {
     return (private_key_path_.empty() && !private_key_.empty()) ? INLINE_STRING : private_key_path_;
   }
-  const std::string& sdsSecretName() const override { return sds_secret_name_; }
-  bool isStaticSdsSecret() const override { return static_sds_secret_; }
 
   const std::vector<std::string>& verifySubjectAltNameList() const override {
     return verify_subject_alt_name_list_;
@@ -76,8 +74,6 @@ private:
   const std::string cert_chain_path_;
   const std::string private_key_;
   const std::string private_key_path_;
-  const std::string sds_secret_name_;
-  const bool static_sds_secret_;
   const std::vector<std::string> verify_subject_alt_name_list_;
   const std::string verify_certificate_hash_;
   const unsigned min_protocol_version_;

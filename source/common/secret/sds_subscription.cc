@@ -31,6 +31,7 @@ SdsSubscription::SdsSubscription(
 
   UNREFERENCED_PARAMETER(api_config_source);
 
+  ENVOY_LOG(debug, "====================================");
   // If we are building an CdsSubscription, the ConfigSource should be REST_LEGACY.
   ASSERT(
       api_config_source.api_type()
@@ -42,6 +43,7 @@ SdsSubscription::SdsSubscription(
 }
 
 void SdsSubscription::createRequest(Http::Message& request) {
+  ENVOY_LOG(debug, "====================================");
   ENVOY_LOG(debug, "sds: starting request");
 
   stats_.update_attempt_.inc();
@@ -54,6 +56,7 @@ void SdsSubscription::createRequest(Http::Message& request) {
 }
 
 void SdsSubscription::parseResponse(const Http::Message& response) {
+  ENVOY_LOG(debug, "====================================");
   ENVOY_LOG(debug, "sds: parsing response");
 
   const std::string response_body = response.bodyAsString();
@@ -98,10 +101,12 @@ void SdsSubscription::parseResponse(const Http::Message& response) {
 }
 
 void SdsSubscription::onFetchComplete() {
+  ENVOY_LOG(debug, "====================================");
   ENVOY_LOG(debug, "sds: fetch complete");
 }
 
 void SdsSubscription::onFetchFailure(const EnvoyException* e) {
+  ENVOY_LOG(debug, "====================================");
   ENVOY_LOG(info, "sds: fetch failure");
   callbacks_->onConfigUpdateFailed(e);
   stats_.update_failure_.inc();

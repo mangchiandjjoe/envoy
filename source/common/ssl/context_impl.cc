@@ -32,6 +32,7 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
     : parent_(parent), ctx_(SSL_CTX_new(TLS_method())), scope_(scope), stats_(generateStats(scope)),
       min_protocol_version_(config.minProtocolVersion()),
       max_protocol_version_(config.maxProtocolVersion()), ecdh_curves_(config.ecdhCurves()) {
+
   RELEASE_ASSERT(ctx_);
 
   int rc = SSL_CTX_set_ex_data(ctx_.get(), sslContextIndex(), this);
@@ -129,28 +130,17 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
     SSL_CTX_set_cert_verify_callback(ctx_.get(), ContextImpl::verifyCallback, this);
   }
 
-  std::string certChain = config.certChain();
-  std::string privateKey = config.privateKey();
 
-  if(!config.sdsSecretName().empty()) {
-    // lookup secret from the SecretManager
-    auto secret = parent.secretManager().getSecret(config.sdsSecretName(), config.isStaticSdsSecret());
-    if(secret) {
-      certChain = secret->getCertificateChain();
-      privateKey = secret->getPrivateKey();
-    }
-  }
-
-  if (certChain.empty() != privateKey.empty()) {
+  if (config.certChain().empty() != config.privateKey().empty()) {
     throw EnvoyException(fmt::format("Failed to load incomplete certificate from {}, {}",
                                      config.certChainPath(), config.privateKeyPath()));
   }
 
-  if (!certChain.empty()) {
+  if (!config.certChain().empty()) {
     // Load certificate chain.
     cert_chain_file_path_ = config.certChainPath();
     bssl::UniquePtr<BIO> bio(
-        BIO_new_mem_buf(const_cast<char*>(certChain.data()), certChain.size()));
+        BIO_new_mem_buf(const_cast<char*>(config.certChain().data()), config.certChain().size()));
     RELEASE_ASSERT(bio != nullptr);
     cert_chain_.reset(PEM_read_bio_X509_AUX(bio.get(), nullptr, nullptr, nullptr));
     if (cert_chain_ == nullptr || !SSL_CTX_use_certificate(ctx_.get(), cert_chain_.get())) {
@@ -181,7 +171,7 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
 
     // Load private key.
     bio.reset(
-        BIO_new_mem_buf(const_cast<char*>(privateKey.data()), privateKey.size()));
+        BIO_new_mem_buf(const_cast<char*>(config.privateKey().data()), config.privateKey().size()));
     RELEASE_ASSERT(bio != nullptr);
     bssl::UniquePtr<EVP_PKEY> pkey(PEM_read_bio_PrivateKey(bio.get(), nullptr, nullptr, nullptr));
     if (pkey == nullptr || !SSL_CTX_use_PrivateKey(ctx_.get(), pkey.get())) {
@@ -440,6 +430,8 @@ ServerContextImpl::ServerContextImpl(ContextManagerImpl& parent, const std::stri
   if (config.certChain().empty()) {
     throw EnvoyException("Server TlsCertificates must have a certificate specified");
   }
+
+
   SSL_CTX_set_select_certificate_cb(
       ctx_.get(), [](const SSL_CLIENT_HELLO* client_hello) -> ssl_select_cert_result_t {
         ContextImpl* context_impl = static_cast<ContextImpl*>(

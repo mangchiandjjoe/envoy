@@ -307,7 +307,8 @@ private:
  * Implementation of ClusterInfo that reads from JSON.
  */
 class ClusterInfoImpl : public ClusterInfo,
-                        public Server::Configuration::TransportSocketFactoryContext {
+                        public Server::Configuration::TransportSocketFactoryContext,
+                        Logger::Loggable<Logger::Id::upstream> {
 public:
   ClusterInfoImpl(const envoy::api::v2::Cluster& config,
                   const envoy::api::v2::core::BindConfig& bind_config, Runtime::Loader& runtime,

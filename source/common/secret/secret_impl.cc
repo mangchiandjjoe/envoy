@@ -15,11 +15,10 @@
 namespace Envoy {
 namespace Secret {
 
-SecretImpl::SecretImpl(const envoy::api::v2::auth::Secret& config, bool is_static)
+SecretImpl::SecretImpl(const envoy::api::v2::auth::Secret& config)
     : name_(config.name()),
       certificate_chain_(readDataSource(config.tls_certificate().certificate_chain(), true)),
-      private_key_(readDataSource(config.tls_certificate().private_key(), true)),
-      is_static_(is_static) {
+      private_key_(readDataSource(config.tls_certificate().private_key(), true)) {
 }
 
 const std::string SecretImpl::readDataSource(const envoy::api::v2::core::DataSource& source,

@@ -19,6 +19,7 @@
 #include "common/protobuf/utility.h"
 #include "common/ratelimit/ratelimit_impl.h"
 #include "common/tracing/http_tracer_impl.h"
+#include "common/secret/secret_impl.h"
 
 namespace Envoy {
 namespace Server {
@@ -50,8 +51,8 @@ void MainImpl::initialize(const envoy::config::bootstrap::v2::Bootstrap& bootstr
   const auto& secrets = bootstrap.static_resources().secrets();
   ENVOY_LOG(info, "loading {} static secret(s)", secrets.size());
   for (ssize_t i = 0; i < secrets.size(); i++) {
-    ENVOY_LOG(debug, "secret #{}:", i);
-    server.secretManager().addOrUpdateSecret(secrets[i], true);
+    ENVOY_LOG(debug, "static secret initialized #{}:", i);
+    server.secretManager().addOrUpdateStaticSecret(Secret::SecretPtr(new Secret::SecretImpl(secrets[i])));
   }
 
   cluster_manager_ = cluster_manager_factory.clusterManagerFromProto(

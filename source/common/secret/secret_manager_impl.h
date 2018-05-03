@@ -24,26 +24,34 @@ class SecretManagerImpl : public SecretManager, Logger::Loggable<Logger::Id::ups
   virtual ~SecretManagerImpl() {
   }
 
-  bool addOrUpdateSecret(const envoy::api::v2::auth::Secret& config, bool is_static) override;
-
-  SecretInfoMap& secrets() override {
-    return secrets_;
-  }
-
-  SecretPtr getSecret(const std::string& name, bool is_static) override;
-
-  bool removeSecret(const std::string& name) override;
-
+  // override from SecretManager
   bool addOrUpdateSdsConfigSource(const envoy::api::v2::core::ConfigSource& config_source) override;
 
+  bool addOrUpdateStaticSecret(const SecretPtr secret) override;
+
+  bool addOrUpdateDynamicSecret(const std::size_t config_source_hash, const SecretPtr secret)
+      override;
+
+  bool addOrUpdateDynamicSecrets(const std::size_t config_source_hash,
+                                 const SecretInfoVector& resources) override;
+
+  SecretPtr getStaticSecret(const std::string& name) override;
+  SecretPtr getDynamicSecret(const std::size_t config_source_hash, const std::string& name)
+      override;
+
+  // SecretManagerImpl
+  bool removeDynamicSecret(const std::size_t config_source_hash, const std::string& name);
+
+  bool addOrUpdateDynamicSecretInternal(const std::size_t config_source_hash,
+                                        const SecretPtr secret);
+
  private:
-  const std::string readDataSource(const envoy::api::v2::core::DataSource& source,
-                                   bool allow_empty);
-
-  const std::string getDataSourcePath(const envoy::api::v2::core::DataSource& source);
-
   Server::Instance& server_;
   SecretInfoMap secrets_;
+
+  SecretInfoMap static_secrets_;
+  std::unordered_map<std::size_t, SecretInfoMap> dynamic_secrets_;
+
   envoy::config::bootstrap::v2::SecretManager config_;
   std::unordered_map<std::size_t, std::unique_ptr<SdsApi>> sds_apis_;
   mutable std::shared_timed_mutex mutex_;
