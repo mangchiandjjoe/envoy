@@ -33,11 +33,11 @@ public:
                ? INLINE_STRING
                : certificate_revocation_list_path_;
   }
-  const std::string& certChain() const override { return cert_chain_; }
+  const std::string certChain() const override;
   const std::string& certChainPath() const override {
     return (cert_chain_path_.empty() && !cert_chain_.empty()) ? INLINE_STRING : cert_chain_path_;
   }
-  const std::string& privateKey() const override { return private_key_; }
+  const std::string privateKey() const override;
   const std::string& privateKeyPath() const override {
     return (private_key_path_.empty() && !private_key_.empty()) ? INLINE_STRING : private_key_path_;
   }
@@ -48,6 +48,8 @@ public:
   const std::string& verifyCertificateHash() const override { return verify_certificate_hash_; };
   unsigned minProtocolVersion() const override { return min_protocol_version_; };
   unsigned maxProtocolVersion() const override { return max_protocol_version_; };
+
+  const std::string& sdsDynamicSecretName() const { return sds_dynamic_secret_name_; };
 
 protected:
   ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config, Secret::SecretManager& secret_manager);
@@ -78,6 +80,8 @@ private:
   const std::string verify_certificate_hash_;
   const unsigned min_protocol_version_;
   const unsigned max_protocol_version_;
+  const uint64_t sds_config_source_hash_;
+  const std::string sds_dynamic_secret_name_;
 };
 
 class ClientContextConfigImpl : public ContextConfigImpl, public ClientContextConfig {

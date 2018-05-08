@@ -1,6 +1,10 @@
 #pragma once
 
 #include <string>
+#include <sstream>
+#include <iomanip>
+
+#include <google/protobuf/util/json_util.h>
 
 #include "envoy/config/bootstrap/v2/bootstrap.pb.h"
 #include "envoy/api/v2/auth/cert.pb.h"
@@ -8,6 +12,7 @@
 
 #include "envoy/secret/secret.h"
 #include "common/common/hash.h"
+#include "common/json/json_loader.h"
 
 namespace Envoy {
 namespace Secret {
@@ -40,19 +45,25 @@ class SecretManager {
    */
   virtual SecretPtr getStaticSecret(const std::string& name) PURE;
 
-  virtual bool addOrUpdateDynamicSecret(const std::size_t hash, const SecretPtr secret) PURE;
+  virtual bool addOrUpdateDynamicSecret(const uint64_t hash, const SecretPtr secret) PURE;
 
-  virtual bool addOrUpdateDynamicSecrets(const std::size_t hash, const SecretInfoVector& resources)
+  virtual bool addOrUpdateDynamicSecrets(const uint64_t hash, const SecretInfoVector& resources)
       PURE;
 
   /**
    * @return the dynamic secret for the given name
    */
-  virtual SecretPtr getDynamicSecret(const std::size_t hash, const std::string& name) PURE;
+  virtual SecretPtr getDynamicSecret(const uint64_t hash, const std::string& name) PURE;
 
-  static std::size_t configSourceHash(const envoy::api::v2::core::ConfigSource& config_source) {
-    std::string text = config_source.DebugString();
-    return HashUtil::xxHash64(text);
+  static uint64_t configSourceHash(const envoy::api::v2::core::ConfigSource& config_source) {
+    std::string jsonstr;
+    if (google::protobuf::util::MessageToJsonString(config_source, &jsonstr).ok()) {
+      auto obj = Json::Factory::loadFromString(jsonstr);
+      if (obj.get() != nullptr) {
+        return obj->hash();
+      }
+    }
+    throw EnvoyException("invalid ConfigSource message");
   }
 };
 

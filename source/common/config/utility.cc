@@ -42,7 +42,7 @@ void Utility::checkCluster(const std::string& error_prefix, const std::string& c
                            Upstream::ClusterManager& cm) {
   Upstream::ThreadLocalCluster* cluster = cm.get(cluster_name);
   if (cluster == nullptr) {
-    throw EnvoyException(fmt::format("{}: unknown cluster '{}'", error_prefix, cluster_name));
+    throw EnvoyException(fmt::format("{}: unknown cluster 3 '{}'", error_prefix, cluster_name));
   }
 
   if (cluster->info()->addedViaApi()) {

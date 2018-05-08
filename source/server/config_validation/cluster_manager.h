@@ -21,21 +21,21 @@ public:
                                   Network::DnsResolverSharedPtr dns_resolver,
                                   Ssl::ContextManager& ssl_context_manager,
                                   Event::Dispatcher& main_thread_dispatcher,
-                                  const LocalInfo::LocalInfo& local_info,
-                                  Secret::SecretManager& secret_manager);
+                                  const LocalInfo::LocalInfo& local_info);
 
   ClusterManagerPtr
   clusterManagerFromProto(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,
                           Stats::Store& stats, ThreadLocal::Instance& tls, Runtime::Loader& runtime,
                           Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
-                          AccessLog::AccessLogManager& log_manager,
-                          Secret::SecretManager& secret_manager) override;
+                          AccessLog::AccessLogManager& log_manager) override;
 
   // Delegates to ProdClusterManagerFactory::createCds, but discards the result and returns nullptr
   // unconditionally.
   CdsApiPtr createCds(const envoy::api::v2::core::ConfigSource& cds_config,
                       const absl::optional<envoy::api::v2::core::ConfigSource>& eds_config,
                       ClusterManager& cm) override;
+private:
+  Ssl::ContextManager& ssl_context_manager_;
 };
 
 /**

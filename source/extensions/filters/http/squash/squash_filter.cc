@@ -37,7 +37,7 @@ SquashFilterConfig::SquashFilterConfig(
 
   if (!clusterManager.get(cluster_name_)) {
     throw EnvoyException(
-        fmt::format("squash filter: unknown cluster '{}' in squash config", cluster_name_));
+        fmt::format("squash filter: unknown cluster 3'{}' in squash config", cluster_name_));
   }
 }
 

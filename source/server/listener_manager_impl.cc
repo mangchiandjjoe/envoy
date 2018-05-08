@@ -361,6 +361,35 @@ ListenerManagerImpl::ListenerManagerImpl(Instance& server,
   for (uint32_t i = 0; i < std::max(1U, server.options().concurrency()); i++) {
     workers_.emplace_back(worker_factory.createWorker());
   }
+
+  // initialize pending_listeners handler
+  pending_listners_timer_ = server.dispatcher().createTimer([this]() -> void {
+    std::shared_lock < std::shared_timed_mutex > rhs(pending_listners_mutex_);
+
+    ENVOY_LOG(info, "pending timer triggered {} listeners are pending...",
+              pending_waiting_listners_.size());
+
+    if(pending_waiting_listners_.empty()) {
+      return;
+    }
+
+    for(auto listener: pending_waiting_listners_) {
+      pending_creation_listners_.push_back(listener);
+    }
+
+    pending_waiting_listners_.clear();
+
+    for(auto listener: pending_creation_listners_) {
+      addOrUpdateListener(listener.first, listener.second);
+    }
+  });
+  pending_listners_timer_->enableTimer(std::chrono::milliseconds(1000));
+}
+
+bool ListenerManagerImpl::listenerCanBeCreated(const envoy::api::v2::Listener&) {
+
+
+  return false;
 }
 
 ListenerManagerStats ListenerManagerImpl::generateStats(Stats::Scope& scope) {
@@ -369,7 +398,8 @@ ListenerManagerStats ListenerManagerImpl::generateStats(Stats::Scope& scope) {
                                      POOL_GAUGE_PREFIX(scope, final_prefix))};
 }
 
-bool ListenerManagerImpl::sdsSecretUpdated(const std::string sds_secret_name) {
+bool ListenerManagerImpl::sdsSecretUpdated(const std::string) {
+  /*
   std::vector<uint64_t> created_listener_hashes;
 
   for (const auto& info : pending_creation_listeners_) {
@@ -411,12 +441,73 @@ bool ListenerManagerImpl::sdsSecretUpdated(const std::string sds_secret_name) {
   for(ListenerImplPtr& listner: active_listeners_) {
     listner->refreshTransportSocketFactory(sds_secret_name);
   }
-
+*/
   return true;
 }
 
 bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& config,
                                               bool modifiable) {
+
+  std::vector<std::pair<uint64_t, std::string>> static_secret_names;
+  for (auto filter_chain : config.filter_chains()) {
+    if (filter_chain.has_tls_context() && filter_chain.tls_context().has_common_tls_context()) {
+      auto common_tls_context = filter_chain.tls_context().common_tls_context();
+      for (auto sds_secrets_config : filter_chain.tls_context().common_tls_context()
+          .tls_certificate_sds_secret_configs()) {
+        if (sds_secrets_config.has_sds_config()) {
+          // Register sds_config to the SecretManager. SecretManager starts
+          // downloading secrets from SDS server.
+          server_.secretManager().addOrUpdateSdsConfigSource(sds_secrets_config.sds_config());
+
+          static_secret_names.push_back(
+              {Secret::SecretManager::configSourceHash(sds_secrets_config.sds_config()),
+                  sds_secrets_config.name()});
+
+        } else {
+          std::cout << __FILE__ << ":" << __LINE__
+              << " " << server_.secretManager().getStaticSecret(sds_secrets_config.name())->getCertificateChain()
+              << " " << server_.secretManager().getStaticSecret(sds_secrets_config.name())->getPrivateKey()
+              << std::endl;
+          if (server_.secretManager().getStaticSecret(sds_secrets_config.name()) == nullptr) {
+            throw EnvoyException(
+                "static secret " + sds_secrets_config.name() + " is not available");
+          }
+        }
+      }
+    }
+  }
+
+  bool add_to_pending_list = false;
+
+  // Check all required SDS secrets were downloaded
+  for (const auto& sds_secret : static_secret_names) {
+    if (this->server_.secretManager().getDynamicSecret(sds_secret.first, sds_secret.second)
+        == nullptr) {
+      // Add or update listener when all related sds secrets were arrived
+      ENVOY_LOG(
+          info,
+          "required sds secrets are not ready yet. adding to pending " "listener creation list. name={} hash={}",
+          sds_secret.second, sds_secret.first);
+
+      add_to_pending_list = true;
+    }
+  }
+
+  if (!add_to_pending_list) {
+    // TODO (jaebong) need to check SDS secrets of connected clusters
+
+
+  }
+
+  if (add_to_pending_list) {
+    envoy::api::v2::Listener copied_config;
+    copied_config.CopyFrom(config);
+
+    std::shared_lock < std::shared_timed_mutex > rhs(pending_listners_mutex_);
+    pending_waiting_listners_.push_back({copied_config, modifiable});
+    return false;
+  }
+
   std::string name;
   if (!config.name().empty()) {
     name = config.name();
@@ -425,61 +516,6 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
   }
   const uint64_t hash = MessageUtil::hash(config);
   ENVOY_LOG(debug, "begin add/update listener: name={} hash={}", name, hash);
-
-  // read list of static and dynamic secrets
-  std::vector<std::string> static_secrets;
-  std::unordered_map<std::size_t, std::string> dynamic_secrets;
-
-  bool sds_secret_required = false;
-
-  for (auto filter_chain : config.filter_chains()) {
-    if (filter_chain.has_tls_context() && filter_chain.tls_context().has_common_tls_context()) {
-      for (auto sds_secret_config : filter_chain.tls_context().common_tls_context()
-          .tls_certificate_sds_secret_configs()) {
-        if (sds_secret_config.has_sds_config()) {
-          this->server_.secretManager().addOrUpdateSdsConfigSource(sds_secret_config.sds_config());
-          dynamic_secrets[Secret::SecretManager::configSourceHash(sds_secret_config.sds_config())] = sds_secret_config.name();
-        } else {
-          static_secrets.push_back(sds_secret_config.name());
-        }
-      }
-    }
-  }
-
-  // Check static secrets. If require static is not ready, throws exception.
-  for (const auto& name : static_secrets) {
-    if (this->server_.secretManager().getStaticSecret(name) == nullptr) {
-      throw Secret::EnvoyStaticSecretException(
-          fmt::format("cluster manager: static secret '{}' is not available.", name));
-    }
-  }
-
-  // Check dynamic secrets
-  for (const auto& dynamic_secret : dynamic_secrets) {
-    if (this->server_.secretManager().getDynamicSecret(dynamic_secret.first, dynamic_secret.second)
-        == nullptr) {
-      sds_secret_required = true;
-      break;
-    }
-  }
-
-  // If some or all secrets were not downloaded yet, then suspend the listener
-  // creation after all secrets were downloaded.
-  if (sds_secret_required) {
-    // Add or update listener when all related sds secrets were arrived
-
-    ListenerCreationInfoPtr info(
-        new ListenerCreationInfo(config, modifiable, static_secrets, dynamic_secrets));
-    pending_creation_listeners_[hash] = std::move(info);
-
-    ENVOY_LOG(
-        info,
-        "required sds secrets are not ready yet. adding to pending " "listener creation list. name={} hash={}",
-        name, hash);
-
-    return true;
-  }
-
 
   auto existing_active_listener = getListenerByName(active_listeners_, name);
   auto existing_warming_listener = getListenerByName(warming_listeners_, name);

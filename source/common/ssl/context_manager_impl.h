@@ -32,10 +32,6 @@ public:
   void releaseClientContext(ClientContext* context);
   void releaseServerContext(ServerContext* context, const std::string& listener_name,
                             const std::vector<std::string>& server_names);
-  /**
-   * Return the secret manager
-   */
-  Secret::SecretManager& secretManager() { return secret_manager_; }
 
   // Ssl::ContextManager
   Ssl::ClientContextPtr createSslClientContext(Stats::Scope& scope,
@@ -49,6 +45,7 @@ public:
                                            const std::string& server_name) const override;
   size_t daysUntilFirstCertExpires() const override;
   void iterateContexts(std::function<void(const Context&)> callback) override;
+  Secret::SecretManager& secretManager() override { return secret_manager_; }
 
 private:
   static bool isWildcardServerName(const std::string& name);

@@ -130,6 +130,7 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
     SSL_CTX_set_cert_verify_callback(ctx_.get(), ContextImpl::verifyCallback, this);
   }
 
+  std::cout << __FILE__ << ":" << __LINE__ << " " << config.certChain() << " " << config.privateKey()<< std::endl;
 
   if (config.certChain().empty() != config.privateKey().empty()) {
     throw EnvoyException(fmt::format("Failed to load incomplete certificate from {}, {}",
@@ -145,7 +146,7 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
     cert_chain_.reset(PEM_read_bio_X509_AUX(bio.get(), nullptr, nullptr, nullptr));
     if (cert_chain_ == nullptr || !SSL_CTX_use_certificate(ctx_.get(), cert_chain_.get())) {
       throw EnvoyException(
-          fmt::format("Failed to load certificate chain from {}", config.certChainPath()));
+          fmt::format("Failed to load certificate chain from 1{}", config.certChainPath()));
     }
     // Read rest of the certificate chain.
     while (true) {
@@ -155,7 +156,7 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
       }
       if (!SSL_CTX_add_extra_chain_cert(ctx_.get(), cert.get())) {
         throw EnvoyException(
-            fmt::format("Failed to load certificate chain from {}", config.certChainPath()));
+            fmt::format("Failed to load certificate chain from 2 {}", config.certChainPath()));
       }
       // SSL_CTX_add_extra_chain_cert() takes ownership.
       cert.release();
@@ -166,7 +167,7 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
       ERR_clear_error();
     } else {
       throw EnvoyException(
-          fmt::format("Failed to load certificate chain from {}", config.certChainPath()));
+          fmt::format("Failed to load certificate chain from 3 {}", config.certChainPath()));
     }
 
     // Load private key.
@@ -427,10 +428,23 @@ ServerContextImpl::ServerContextImpl(ContextManagerImpl& parent, const std::stri
     : ContextImpl(parent, scope, config), listener_name_(listener_name),
       server_names_(server_names), skip_context_update_(skip_context_update), runtime_(runtime),
       session_ticket_keys_(config.sessionTicketKeys()) {
-  if (config.certChain().empty()) {
-    throw EnvoyException("Server TlsCertificates must have a certificate specified");
-  }
 
+  if (config.certChain().empty()) {
+    if(config.sdsDynamicSecretName().empty()) {
+      throw EnvoyException("Server TlsCertificates must have a certificate specified");
+    }
+/*
+    int retries = 500;
+    do {
+      if (!config.certChain().empty()) {
+        break;
+      }
+      retries--;
+      std::cout << __FILE__ << ":" << __LINE__ << " " << std::endl;
+      std::this_thread::sleep_for (std::chrono::microseconds(1000000));
+    } while (retries > 0);
+*/
+  }
 
   SSL_CTX_set_select_certificate_cb(
       ctx_.get(), [](const SSL_CLIENT_HELLO* client_hello) -> ssl_select_cert_result_t {

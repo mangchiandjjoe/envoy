@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vector>
 #include <mutex>
 #include <shared_mutex>
 
@@ -89,50 +90,6 @@ struct ListenerManagerStats {
   ALL_LISTENER_MANAGER_STATS(GENERATE_COUNTER_STRUCT, GENERATE_GAUGE_STRUCT)
 };
 
-class ListenerCreationInfo {
- public:
-  ListenerCreationInfo(const envoy::api::v2::Listener& config, bool modifiable,
-                       const std::vector<std::string> static_secrets,
-                       const std::unordered_map<std::size_t, std::string> dynamic_secrets)
-      : config_([&config] {
-          envoy::api::v2::Listener cfg;
-          cfg.CopyFrom(config);
-          return cfg;
-        }()),
-        modifiable_(modifiable),
-        static_secrets_(static_secrets),
-        dynamic_secrets_(dynamic_secrets) {
-  }
-
-  virtual ~ListenerCreationInfo() {
-  }
-
-  const envoy::api::v2::Listener& getConfig() {
-    return config_;
-  }
-
-  bool getModifiable() {
-    return modifiable_;
-  }
-
-  const std::vector<std::string>& getStaticSecrets() {
-    return static_secrets_;
-  }
-
-  const std::unordered_map<std::size_t, std::string>& getDynamicSecrets() {
-    return dynamic_secrets_;
-  }
-
- private:
-  const envoy::api::v2::Listener config_;
-  bool modifiable_;
-  const std::vector<std::string> static_secrets_;
-  const std::unordered_map<std::size_t, std::string> dynamic_secrets_;
-};
-
-typedef std::unique_ptr<ListenerCreationInfo> ListenerCreationInfoPtr;
-
-
 /**
  * Implementation of ListenerManager.
  */
@@ -193,9 +150,10 @@ private:
    */
   ListenerList::iterator getListenerByName(ListenerList& listeners, const std::string& name);
 
-  // If all required information are not ready, creation request will be added
-  // to the pending_creation_listener_
-  std::unordered_map<uint64_t, ListenerCreationInfoPtr> pending_creation_listeners_;
+  /**
+   * @return listener can be created
+   */
+  bool listenerCanBeCreated(const envoy::api::v2::Listener& config);
 
   // Active listeners are listeners that are currently accepting new connections on the workers.
   ListenerList active_listeners_;
@@ -211,6 +169,11 @@ private:
   std::list<WorkerPtr> workers_;
   bool workers_started_{};
   ListenerManagerStats stats_;
+
+  mutable std::shared_timed_mutex pending_listners_mutex_;
+  std::vector<std::pair<const envoy::api::v2::Listener, bool>> pending_creation_listners_;
+  std::vector<std::pair<const envoy::api::v2::Listener, bool>> pending_waiting_listners_;
+  Event::TimerPtr pending_listners_timer_;
 };
 
 class TransportSocketFactoryInfo {

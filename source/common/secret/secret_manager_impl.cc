@@ -31,16 +31,16 @@ SecretManagerImpl::SecretManagerImpl(Server::Instance& server,
 
 bool SecretManagerImpl::addOrUpdateSdsConfigSource(
     const envoy::api::v2::core::ConfigSource& config_source) {
-  std::size_t hash = SecretManager::configSourceHash(config_source);
+
+  uint64_t hash = SecretManager::configSourceHash(config_source);
   if (sds_apis_.find(hash) != sds_apis_.end()) {
     return true;
   }
 
+  std::unique_ptr<SdsApi> sds_api(new SdsApi(server_, config_source, *this));
 
   std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
 
-
-  std::unique_ptr<SdsApi> sds_api(new SdsApi(server_, config_source, *this));
   sds_apis_[hash] = std::move(sds_api);
   dynamic_secrets_[hash] = {};
   return true;
@@ -52,7 +52,7 @@ bool SecretManagerImpl::addOrUpdateStaticSecret(const SecretPtr secret) {
   return true;
 }
 
-bool SecretManagerImpl::addOrUpdateDynamicSecrets(const std::size_t config_source_hash,
+bool SecretManagerImpl::addOrUpdateDynamicSecrets(const uint64_t config_source_hash,
                                                   const SecretInfoVector& secrets) {
   std::unique_lock<std::shared_timed_mutex> lhs(mutex_);
 
@@ -80,14 +80,15 @@ bool SecretManagerImpl::addOrUpdateDynamicSecrets(const std::size_t config_sourc
   return true;
 }
 
-bool SecretManagerImpl::addOrUpdateDynamicSecret(const std::size_t config_source_hash,
+bool SecretManagerImpl::addOrUpdateDynamicSecret(const uint64_t config_source_hash,
                                                  const SecretPtr secret) {
   std::unique_lock<std::shared_timed_mutex> lhs(mutex_);  // write lock
   return addOrUpdateDynamicSecretInternal(config_source_hash, secret);
 }
 
-bool SecretManagerImpl::addOrUpdateDynamicSecretInternal(const std::size_t config_source_hash,
+bool SecretManagerImpl::addOrUpdateDynamicSecretInternal(const uint64_t config_source_hash,
                                                          const SecretPtr secret) {
+
   if (dynamic_secrets_.find(config_source_hash) == dynamic_secrets_.end()) {
     ENVOY_LOG(error, "sds: secret not found: ", secret->getName());
     return false;
@@ -126,7 +127,7 @@ bool SecretManagerImpl::addOrUpdateDynamicSecretInternal(const std::size_t confi
   return true;
 }
 
-bool SecretManagerImpl::removeDynamicSecret(const std::size_t config_source_hash,
+bool SecretManagerImpl::removeDynamicSecret(const uint64_t config_source_hash,
                                             const std::string& name) {
 
   if (dynamic_secrets_.find(config_source_hash) != dynamic_secrets_.end()
@@ -142,7 +143,7 @@ SecretPtr SecretManagerImpl::getStaticSecret(const std::string& name) {
   return (static_secrets_.find(name) != static_secrets_.end()) ? static_secrets_[name] : nullptr;
 }
 
-SecretPtr SecretManagerImpl::getDynamicSecret(const std::size_t config_source_hash,
+SecretPtr SecretManagerImpl::getDynamicSecret(const uint64_t config_source_hash,
                                               const std::string& name) {
   if (dynamic_secrets_.find(config_source_hash) != dynamic_secrets_.end()
       && dynamic_secrets_[config_source_hash].find(name)

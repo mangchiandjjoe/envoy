@@ -46,7 +46,7 @@ class SdsApi : public Init::Target, Config::SubscriptionCallbacks<envoy::api::v2
 
   Server::Instance& server_;
   const envoy::api::v2::core::ConfigSource sds_config_;
-  const std::size_t sds_config_source_hash_;
+  const uint64_t sds_config_source_hash_;
   SecretManager& secret_manager_;
   std::unique_ptr<Config::Subscription<envoy::api::v2::auth::Secret>> subscription_;
   std::function<void()> initialize_callback_;

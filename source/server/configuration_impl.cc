@@ -51,14 +51,13 @@ void MainImpl::initialize(const envoy::config::bootstrap::v2::Bootstrap& bootstr
   const auto& secrets = bootstrap.static_resources().secrets();
   ENVOY_LOG(info, "loading {} static secret(s)", secrets.size());
   for (ssize_t i = 0; i < secrets.size(); i++) {
-    ENVOY_LOG(debug, "static secret initialized #{}:", i);
+    ENVOY_LOG(debug, "static secret #{}: {}", i, secrets[i].name());
     server.secretManager().addOrUpdateStaticSecret(Secret::SecretPtr(new Secret::SecretImpl(secrets[i])));
   }
 
   cluster_manager_ = cluster_manager_factory.clusterManagerFromProto(
       bootstrap, server.stats(), server.threadLocal(), server.runtime(), server.random(),
-      server.localInfo(), server.accessLogManager(),
-      server.secretManager());
+      server.localInfo(), server.accessLogManager());
 
   const auto& listeners = bootstrap.static_resources().listeners();
   ENVOY_LOG(info, "loading {} listener(s)", listeners.size());

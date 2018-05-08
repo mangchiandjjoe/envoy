@@ -177,6 +177,31 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
       init_helper_([this](Cluster& cluster) { onClusterInit(cluster); }),
       secret_manager_(secret_manager) {
 
+  // initialize pending_listeners handler
+  pending_clusters_timer_ = main_thread_dispatcher.createTimer([this]() -> void {
+    std::shared_lock < std::shared_timed_mutex > rhs(pending_clusters_mutex_);
+
+    ENVOY_LOG(info, "pending timer triggered {} clusters are pending...",
+              pending_clusters_.size());
+
+    if(pending_clusters_.empty()) {
+      return;
+    }
+
+    std::vector<envoy::api::v2::Cluster> clusters;
+    for(auto listener: pending_clusters_) {
+      clusters.push_back(listener);
+    }
+    pending_clusters_.clear();
+
+    for(auto cluster: clusters) {
+      addOrUpdateCluster(cluster);
+    }
+  });
+  pending_clusters_timer_->enableTimer(std::chrono::milliseconds(1000));
+
+
+
   async_client_manager_ = std::make_unique<Grpc::AsyncClientManagerImpl>(*this, tls);
   const auto& cm_config = bootstrap.cluster_manager();
   if (cm_config.has_outlier_detection()) {
@@ -339,7 +364,10 @@ void ClusterManagerImpl::onClusterInit(Cluster& cluster) {
   }
 }
 
-bool ClusterManagerImpl::sdsSecretUpdated(const std::string sds_secret_name) {
+bool ClusterManagerImpl::sdsSecretUpdated(const std::string) {
+
+/*
+
   std::vector<std::string> created_clusters;
 
   for (const auto& info : pending_creation_clusters_) {
@@ -377,19 +405,52 @@ bool ClusterManagerImpl::sdsSecretUpdated(const std::string sds_secret_name) {
   for(auto& cluster: active_clusters_) {
     cluster.second->cluster_->sdsSecretUpdated(sds_secret_name);
   }
+*/
 
   return true;
 }
 
-bool ClusterManagerImpl::addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) {
+bool ClusterManagerImpl::appendPendingCreationList(const envoy::api::v2::Cluster& cluster) {
+  if (cluster.has_tls_context() && cluster.tls_context().has_common_tls_context()) {
+    std::vector<std::pair<uint64_t, std::string>> static_secret_names;
+    for (auto sds_secrets_config : cluster.tls_context().common_tls_context()
+        .tls_certificate_sds_secret_configs()) {
+      if (sds_secrets_config.has_sds_config()) {
+        secret_manager_.addOrUpdateSdsConfigSource(sds_secrets_config.sds_config());
+        static_secret_names.push_back(
+            {Secret::SecretManager::configSourceHash(sds_secrets_config.sds_config()),
+                sds_secrets_config.name()});
+      } else {
+        if (secret_manager_.getStaticSecret(sds_secrets_config.name()) == nullptr) {
+          throw EnvoyException("static secret " + sds_secrets_config.name() + " is not available");
+        }
+      }
+    }
 
-  if (!checkSdsScrets(
-      cluster,
-      true,
-      init_helper_.state() != ClusterManagerInitHelper::State::AllClustersInitialized ?
-          active_clusters_ : warming_clusters_,
-      false)) {
-    return true;
+    // Check all required SDS secrets were downloaded
+    for (const auto& sds_secret : static_secret_names) {
+      if (secret_manager_.getDynamicSecret(sds_secret.first, sds_secret.second) == nullptr) {
+        // Add or update listener when all related sds secrets were arrived
+        ENVOY_LOG(
+            info,
+            "required sds secrets are not ready yet. adding to pending cluster creation list. name={} hash={}",
+            sds_secret.second, sds_secret.first);
+
+        envoy::api::v2::Cluster copied_config;
+        copied_config.CopyFrom(cluster);
+
+        std::shared_lock<std::shared_timed_mutex> rhs(pending_clusters_mutex_);
+        pending_clusters_.push_back(copied_config);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool ClusterManagerImpl::addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) {
+  if(appendPendingCreationList(cluster) ) {
+    return false;
   }
 
   // First we need to see if this new config is new or an update to an existing dynamic cluster.
@@ -520,65 +581,9 @@ bool ClusterManagerImpl::removeCluster(const std::string& cluster_name) {
   return removed;
 }
 
-bool ClusterManagerImpl::checkSdsScrets(const envoy::api::v2::Cluster& cluster, bool added_via_api,
-                                        ClusterMap& cluster_map, bool fromLoadCluster) {
-  if(cluster.has_tls_context() && cluster.tls_context().has_common_tls_context()) {
-    // read list of static and dynamic secrets
-    std::vector<std::string> static_secrets;
-    std::unordered_map<std::size_t, std::string> dynamic_secrets;
-
-    for (auto sds_secret_config : cluster.tls_context().common_tls_context()
-        .tls_certificate_sds_secret_configs()) {
-      if (sds_secret_config.has_sds_config()) {
-        secret_manager_.addOrUpdateSdsConfigSource(sds_secret_config.sds_config());
-        dynamic_secrets[Secret::SecretManager::configSourceHash(sds_secret_config.sds_config())] = sds_secret_config.name();
-      } else {
-        static_secrets.push_back(sds_secret_config.name());
-      }
-    }
-
-    // Check static secrets. If require static is not ready, throws exception.
-    for (const auto& name : static_secrets) {
-      if (secret_manager_.getStaticSecret(name) == nullptr) {
-        throw Secret::EnvoyStaticSecretException(
-            fmt::format("cluster manager: static secret '{}' is not available.", name));
-      }
-    }
-
-    // Check dynamic secrets
-    bool sds_secret_required = false;
-    for (const auto& dynamic_secret : dynamic_secrets) {
-
-      if (secret_manager_.getDynamicSecret(dynamic_secret.first, dynamic_secret.second)
-          == nullptr) {
-        sds_secret_required = true;
-        break;
-      }
-    }
-
-    // If some or all secrets were not downloaded yet, then suspend the listener
-    // creation after all secrets were downloaded.
-    if (sds_secret_required) {
-      // Add or update listener when all related sds secrets were arrived
-      pending_creation_clusters_[cluster.name()] = ClusterCreationInfoPtr(
-          new ClusterCreationInfo(cluster, added_via_api, cluster_map, fromLoadCluster, static_secrets, dynamic_secrets));
-
-      ENVOY_LOG(
-          info,
-          "required sds secrets are not ready yet. adding to pending cluster creation list. {}",
-          cluster.name());
-
-      return false;
-    }
-  }
-
-  return true;
-}
-
-
 void ClusterManagerImpl::loadCluster(const envoy::api::v2::Cluster& cluster, bool added_via_api,
                                      ClusterMap& cluster_map) {
-  if(!checkSdsScrets(cluster, added_via_api, cluster_map, true)) {
+  if(appendPendingCreationList(cluster) ) {
     return;
   }
 
@@ -694,7 +699,6 @@ Host::CreateConnectionData ClusterManagerImpl::tcpConnForCluster(const std::stri
 
   auto entry = cluster_manager.thread_local_clusters_.find(cluster);
   if (entry == cluster_manager.thread_local_clusters_.end()) {
-    ENVOY_LOG(info, " ===== ");
     throw EnvoyException(fmt::format("unknown cluster '{}'", cluster));
   }
 
@@ -711,7 +715,6 @@ Http::AsyncClient& ClusterManagerImpl::httpAsyncClientForCluster(const std::stri
   ThreadLocalClusterManagerImpl& cluster_manager = tls_->getTyped<ThreadLocalClusterManagerImpl>();
   auto entry = cluster_manager.thread_local_clusters_.find(cluster);
   if (entry != cluster_manager.thread_local_clusters_.end()) {
-    ENVOY_LOG(info, " ===== ");
     return entry->second->http_async_client_;
   } else {
     throw EnvoyException(fmt::format("unknown cluster '{}'", cluster));
@@ -984,12 +987,11 @@ ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::connPool(
 ClusterManagerPtr ProdClusterManagerFactory::clusterManagerFromProto(
     const envoy::config::bootstrap::v2::Bootstrap& bootstrap, Stats::Store& stats,
     ThreadLocal::Instance& tls, Runtime::Loader& runtime, Runtime::RandomGenerator& random,
-    const LocalInfo::LocalInfo& local_info, AccessLog::AccessLogManager& log_manager,
-    Secret::SecretManager& secret_manager) {
+    const LocalInfo::LocalInfo& local_info, AccessLog::AccessLogManager& log_manager) {
   return ClusterManagerPtr{new ClusterManagerImpl(bootstrap, *this, stats, tls, runtime, random,
                                                   local_info, log_manager,
                                                   main_thread_dispatcher_,
-                                                  secret_manager)};
+                                                  ssl_context_manager_.secretManager())};
 }
 
 Http::ConnectionPool::InstancePtr ProdClusterManagerFactory::allocateConnPool(
@@ -1010,7 +1012,7 @@ ClusterSharedPtr ProdClusterManagerFactory::clusterFromProto(
     Outlier::EventLoggerSharedPtr outlier_event_logger, bool added_via_api) {
   return ClusterImplBase::create(cluster, cm, stats_, tls_, dns_resolver_, ssl_context_manager_,
                                  runtime_, random_, main_thread_dispatcher_, local_info_,
-                                 outlier_event_logger, added_via_api, secret_manager_);
+                                 outlier_event_logger, added_via_api);
 }
 
 CdsApiPtr ProdClusterManagerFactory::createCds(

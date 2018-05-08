@@ -29,20 +29,20 @@ class SecretManagerImpl : public SecretManager, Logger::Loggable<Logger::Id::ups
 
   bool addOrUpdateStaticSecret(const SecretPtr secret) override;
 
-  bool addOrUpdateDynamicSecret(const std::size_t config_source_hash, const SecretPtr secret)
+  bool addOrUpdateDynamicSecret(const uint64_t config_source_hash, const SecretPtr secret)
       override;
 
-  bool addOrUpdateDynamicSecrets(const std::size_t config_source_hash,
+  bool addOrUpdateDynamicSecrets(const uint64_t config_source_hash,
                                  const SecretInfoVector& resources) override;
 
   SecretPtr getStaticSecret(const std::string& name) override;
-  SecretPtr getDynamicSecret(const std::size_t config_source_hash, const std::string& name)
+  SecretPtr getDynamicSecret(const uint64_t config_source_hash, const std::string& name)
       override;
 
   // SecretManagerImpl
-  bool removeDynamicSecret(const std::size_t config_source_hash, const std::string& name);
+  bool removeDynamicSecret(const uint64_t config_source_hash, const std::string& name);
 
-  bool addOrUpdateDynamicSecretInternal(const std::size_t config_source_hash,
+  bool addOrUpdateDynamicSecretInternal(const uint64_t config_source_hash,
                                         const SecretPtr secret);
 
  private:
@@ -50,10 +50,10 @@ class SecretManagerImpl : public SecretManager, Logger::Loggable<Logger::Id::ups
   SecretInfoMap secrets_;
 
   SecretInfoMap static_secrets_;
-  std::unordered_map<std::size_t, SecretInfoMap> dynamic_secrets_;
+  std::unordered_map<uint64_t, SecretInfoMap> dynamic_secrets_;
 
   envoy::config::bootstrap::v2::SecretManager config_;
-  std::unordered_map<std::size_t, std::unique_ptr<SdsApi>> sds_apis_;
+  std::unordered_map<uint64_t, std::unique_ptr<SdsApi>> sds_apis_;
   mutable std::shared_timed_mutex mutex_;
 };
 
