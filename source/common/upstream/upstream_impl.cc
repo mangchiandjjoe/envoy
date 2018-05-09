@@ -270,7 +270,35 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
       lb_subset_(LoadBalancerSubsetInfoImpl(config.lb_subset_config())),
       metadata_(config.metadata()), common_lb_config_(config.common_lb_config()),
       cluster_socket_options_(parseClusterSocketOptions(config, bind_config)),
-      drain_connections_on_host_removal_(config.drain_connections_on_host_removal()) {
+      drain_connections_on_host_removal_(config.drain_connections_on_host_removal()),
+      transport_socker_([&config] {
+        // clone transport_socket info to refresh the transport_socket_factory
+          envoy::api::v2::core::TransportSocket transport_socket;
+          if (!config.has_transport_socket()) {
+            if (config.has_tls_context()) {
+              transport_socket.set_name(Extensions::TransportSockets::TransportSocketNames::get().SSL);
+              MessageUtil::jsonConvert(config.tls_context(), *transport_socket.mutable_config());
+            } else {
+              transport_socket.set_name(Extensions::TransportSockets::TransportSocketNames::get().RAW_BUFFER);
+            }
+          } else {
+            transport_socket.CopyFrom(config.transport_socket());
+          }
+          return transport_socket;
+        }()),
+        sds_secret_names_([&config] {
+        // collect dynamic SdsSecretConfig names
+          std::set<std::string> sds_secret_names;
+          if (config.has_tls_context() && config.tls_context().has_common_tls_context()) {
+            for (auto sds_secret_configs : config.tls_context().common_tls_context()
+                .tls_certificate_sds_secret_configs()) {
+              if (sds_secret_configs.has_sds_config()) {
+                sds_secret_names.insert(sds_secret_configs.name());
+              }
+            }
+          }
+          return sds_secret_names;
+        }()) {
 
   // If the cluster doesn't have a transport socket configured, override with the default transport
   // socket implementation based on the tls_context. We copy by value first then override if
@@ -331,6 +359,21 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
     idle_timeout_ = std::chrono::milliseconds(
         DurationUtil::durationToMilliseconds(config.common_http_protocol_options().idle_timeout()));
   }
+}
+
+// TODO (jaebong) Refresh the TransportSocketFactory instance if sds_secret_name is in dynamic SDS configuration
+bool ClusterInfoImpl::refreshTransportSocketFactory(const std::string& sds_secret_name) {
+  if (sds_secret_names_.find(sds_secret_name) != sds_secret_names_.end()) {
+    auto& config_factory = Config::Utility::getAndCheckFactory<
+        Server::Configuration::UpstreamTransportSocketConfigFactory>(transport_socker_.name());
+
+    ProtobufTypes::MessagePtr message = Config::Utility::translateToFactoryConfig(transport_socker_,
+                                                                                  config_factory);
+
+    // TODO (jaebong) transport_socket_factory_ must protect !!!!
+    transport_socket_factory_ = config_factory.createTransportSocketFactory(*message, *this);
+  }
+  return true;
 }
 
 ClusterSharedPtr ClusterImplBase::create(const envoy::api::v2::Cluster& cluster, ClusterManager& cm,
@@ -462,6 +505,10 @@ bool ClusterInfoImpl::maintenanceMode() const {
 ResourceManager& ClusterInfoImpl::resourceManager(ResourcePriority priority) const {
   ASSERT(enumToInt(priority) < resource_managers_.managers_.size());
   return *resource_managers_.managers_[enumToInt(priority)];
+}
+
+bool ClusterImplBase::sdsSecretUpdated(const std::string& sds_secret_name) {
+  return info_->refreshTransportSocketFactory(sds_secret_name);
 }
 
 void ClusterImplBase::initialize(std::function<void()> callback) {

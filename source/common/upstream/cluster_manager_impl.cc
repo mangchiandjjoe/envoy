@@ -10,6 +10,7 @@
 #include "envoy/event/dispatcher.h"
 #include "envoy/network/dns.h"
 #include "envoy/runtime/runtime.h"
+#include "envoy/secret/secret.h"
 
 #include "common/common/enum_to_int.h"
 #include "common/common/fmt.h"
@@ -168,11 +169,39 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
                                        Runtime::RandomGenerator& random,
                                        const LocalInfo::LocalInfo& local_info,
                                        AccessLog::AccessLogManager& log_manager,
-                                       Event::Dispatcher& main_thread_dispatcher)
+                                       Event::Dispatcher& main_thread_dispatcher,
+                                       Secret::SecretManager& secret_manager)
     : factory_(factory), runtime_(runtime), stats_(stats), tls_(tls.allocateSlot()),
       random_(random), bind_config_(bootstrap.cluster_manager().upstream_bind_config()),
       local_info_(local_info), cm_stats_(generateStats(stats)),
-      init_helper_([this](Cluster& cluster) { onClusterInit(cluster); }) {
+      init_helper_([this](Cluster& cluster) { onClusterInit(cluster); }),
+      secret_manager_(secret_manager) {
+
+  // initialize pending_listeners handler
+  pending_clusters_timer_ = main_thread_dispatcher.createTimer([this]() -> void {
+    std::shared_lock < std::shared_timed_mutex > rhs(pending_clusters_mutex_);
+
+    ENVOY_LOG(info, "pending timer triggered {} clusters are pending...",
+              pending_clusters_.size());
+
+    if(pending_clusters_.empty()) {
+      return;
+    }
+
+    std::vector<envoy::api::v2::Cluster> clusters;
+    for(auto listener: pending_clusters_) {
+      clusters.push_back(listener);
+    }
+    pending_clusters_.clear();
+
+    for(auto cluster: clusters) {
+      addOrUpdateCluster(cluster);
+    }
+  });
+  pending_clusters_timer_->enableTimer(std::chrono::milliseconds(1000));
+
+
+
   async_client_manager_ = std::make_unique<Grpc::AsyncClientManagerImpl>(*this, tls);
   const auto& cm_config = bootstrap.cluster_manager();
   if (cm_config.has_outlier_detection()) {
@@ -335,7 +364,95 @@ void ClusterManagerImpl::onClusterInit(Cluster& cluster) {
   }
 }
 
+bool ClusterManagerImpl::sdsSecretUpdated(const std::string) {
+
+/*
+
+  std::vector<std::string> created_clusters;
+
+  for (const auto& info : pending_creation_clusters_) {
+    bool is_ready_to_create = true;
+
+    for (auto item : info.second->getDynamicSecrets()) {
+      if (this->secret_manager_.getDynamicSecret(item.first, item.second) == nullptr) {
+        is_ready_to_create = false;
+        break;
+      }
+    }
+
+    if (is_ready_to_create) {
+      ENVOY_LOG(info, "All required SDS secrets were downloaded. creating cluster: ", info.first);
+      try {
+        addOrUpdateCluster(info.second->getConfig());
+        created_clusters.push_back(info.first);
+      } catch (EnvoyException& e) {
+        ENVOY_LOG(info, "failed to create a cluster: {}", info.second->getConfig().name());
+      }
+    }
+  }
+
+  // removed completed from pending_creation_clusters_
+  for (std::string name : created_clusters) {
+    pending_creation_clusters_.erase(name);
+  }
+
+  // Update secrets for warming_clusters_
+  for(auto& cluster: warming_clusters_) {
+    cluster.second->cluster_->sdsSecretUpdated(sds_secret_name);
+  }
+
+  // Update secrets for active_clusters_
+  for(auto& cluster: active_clusters_) {
+    cluster.second->cluster_->sdsSecretUpdated(sds_secret_name);
+  }
+*/
+
+  return true;
+}
+
+bool ClusterManagerImpl::appendPendingCreationList(const envoy::api::v2::Cluster& cluster) {
+  if (cluster.has_tls_context() && cluster.tls_context().has_common_tls_context()) {
+    std::vector<std::pair<uint64_t, std::string>> static_secret_names;
+    for (auto sds_secrets_config : cluster.tls_context().common_tls_context()
+        .tls_certificate_sds_secret_configs()) {
+      if (sds_secrets_config.has_sds_config()) {
+        secret_manager_.addOrUpdateSdsConfigSource(sds_secrets_config.sds_config());
+        static_secret_names.push_back(
+            {Secret::SecretManager::configSourceHash(sds_secrets_config.sds_config()),
+                sds_secrets_config.name()});
+      } else {
+        if (secret_manager_.getStaticSecret(sds_secrets_config.name()) == nullptr) {
+          throw EnvoyException("static secret " + sds_secrets_config.name() + " is not available");
+        }
+      }
+    }
+
+    // Check all required SDS secrets were downloaded
+    for (const auto& sds_secret : static_secret_names) {
+      if (secret_manager_.getDynamicSecret(sds_secret.first, sds_secret.second) == nullptr) {
+        // Add or update listener when all related sds secrets were arrived
+        ENVOY_LOG(
+            info,
+            "required sds secrets are not ready yet. adding to pending cluster creation list. name={} hash={}",
+            sds_secret.second, sds_secret.first);
+
+        envoy::api::v2::Cluster copied_config;
+        copied_config.CopyFrom(cluster);
+
+        std::shared_lock<std::shared_timed_mutex> rhs(pending_clusters_mutex_);
+        pending_clusters_.push_back(copied_config);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 bool ClusterManagerImpl::addOrUpdateCluster(const envoy::api::v2::Cluster& cluster) {
+  if(appendPendingCreationList(cluster) ) {
+    return false;
+  }
+
   // First we need to see if this new config is new or an update to an existing dynamic cluster.
   // We don't allow updates to statically configured clusters in the main configuration. We check
   // both the warming clusters and the active clusters to see if we need an update or the update
@@ -466,6 +583,10 @@ bool ClusterManagerImpl::removeCluster(const std::string& cluster_name) {
 
 void ClusterManagerImpl::loadCluster(const envoy::api::v2::Cluster& cluster, bool added_via_api,
                                      ClusterMap& cluster_map) {
+  if(appendPendingCreationList(cluster) ) {
+    return;
+  }
+
   ClusterSharedPtr new_cluster =
       factory_.clusterFromProto(cluster, *this, outlier_event_logger_, added_via_api);
 
@@ -909,7 +1030,8 @@ ClusterManagerPtr ProdClusterManagerFactory::clusterManagerFromProto(
     const LocalInfo::LocalInfo& local_info, AccessLog::AccessLogManager& log_manager) {
   return ClusterManagerPtr{new ClusterManagerImpl(bootstrap, *this, stats, tls, runtime, random,
                                                   local_info, log_manager,
-                                                  main_thread_dispatcher_)};
+                                                  main_thread_dispatcher_,
+                                                  ssl_context_manager_.secretManager())};
 }
 
 Http::ConnectionPool::InstancePtr ProdClusterManagerFactory::allocateConnPool(

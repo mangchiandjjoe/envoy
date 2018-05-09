@@ -5,6 +5,7 @@
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/ssl/context_config.h"
+#include "envoy/secret/secret_manager.h"
 
 #include "common/json/json_loader.h"
 
@@ -32,11 +33,11 @@ public:
                ? INLINE_STRING
                : certificate_revocation_list_path_;
   }
-  const std::string& certChain() const override { return cert_chain_; }
+  const std::string certChain() const override;
   const std::string& certChainPath() const override {
     return (cert_chain_path_.empty() && !cert_chain_.empty()) ? INLINE_STRING : cert_chain_path_;
   }
-  const std::string& privateKey() const override { return private_key_; }
+  const std::string privateKey() const override;
   const std::string& privateKeyPath() const override {
     return (private_key_path_.empty() && !private_key_.empty()) ? INLINE_STRING : private_key_path_;
   }
@@ -47,8 +48,10 @@ public:
   unsigned minProtocolVersion() const override { return min_protocol_version_; };
   unsigned maxProtocolVersion() const override { return max_protocol_version_; };
 
+  const std::string& sdsDynamicSecretName() const { return sds_dynamic_secret_name_; };
+
 protected:
-  ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config);
+  ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config, Secret::SecretManager& secret_manager);
 
 private:
   static unsigned
@@ -57,6 +60,8 @@ private:
 
   static const std::string DEFAULT_CIPHER_SUITES;
   static const std::string DEFAULT_ECDH_CURVES;
+
+  Secret::SecretManager& secret_manager_;
 
   const std::string alpn_protocols_;
   const std::string alt_alpn_protocols_;
@@ -74,12 +79,14 @@ private:
   const std::string verify_certificate_hash_;
   const unsigned min_protocol_version_;
   const unsigned max_protocol_version_;
+  const uint64_t sds_config_source_hash_;
+  const std::string sds_dynamic_secret_name_;
 };
 
 class ClientContextConfigImpl : public ContextConfigImpl, public ClientContextConfig {
 public:
-  explicit ClientContextConfigImpl(const envoy::api::v2::auth::UpstreamTlsContext& config);
-  explicit ClientContextConfigImpl(const Json::Object& config);
+  explicit ClientContextConfigImpl(const envoy::api::v2::auth::UpstreamTlsContext& config, Secret::SecretManager& secret_manager);
+  explicit ClientContextConfigImpl(const Json::Object& config, Secret::SecretManager& secret_manager);
 
   // Ssl::ClientContextConfig
   const std::string& serverNameIndication() const override { return server_name_indication_; }
@@ -90,8 +97,8 @@ private:
 
 class ServerContextConfigImpl : public ContextConfigImpl, public ServerContextConfig {
 public:
-  explicit ServerContextConfigImpl(const envoy::api::v2::auth::DownstreamTlsContext& config);
-  explicit ServerContextConfigImpl(const Json::Object& config);
+  explicit ServerContextConfigImpl(const envoy::api::v2::auth::DownstreamTlsContext& config, Secret::SecretManager& secret_manager);
+  explicit ServerContextConfigImpl(const Json::Object& config, Secret::SecretManager& secret_manager);
 
   // Ssl::ServerContextConfig
   bool requireClientCertificate() const override { return require_client_certificate_; }

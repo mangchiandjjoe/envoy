@@ -32,6 +32,7 @@ envoy_cc_library(
         "ssl",
     ],
     deps = [
+        "//include/envoy/secret:secret_manager_interface",
         "//include/envoy/ssl:context_config_interface",
         "//source/common/common:assert_lib",
         "//source/common/config:datasource_lib",
@@ -55,6 +56,7 @@ envoy_cc_library(
     external_deps = ["ssl"],
     deps = [
         "//include/envoy/runtime:runtime_interface",
+        "//include/envoy/secret:secret_manager_interface",
         "//include/envoy/ssl:context_config_interface",
         "//include/envoy/ssl:context_interface",
         "//include/envoy/ssl:context_manager_interface",

@@ -186,7 +186,7 @@ void ConnectionHandlerImpl::ActiveListener::onAccept(
 
 void ConnectionHandlerImpl::ActiveListener::newConnection(Network::ConnectionSocketPtr&& socket) {
   Network::ConnectionPtr new_connection = parent_.dispatcher_.createServerConnection(
-      std::move(socket), config_.transportSocketFactory().createTransportSocket());
+      std::move(socket), config_.createTransportSocket());
   new_connection->setBufferLimits(config_.perConnectionBufferLimitBytes());
   onNewConnection(std::move(new_connection));
 }

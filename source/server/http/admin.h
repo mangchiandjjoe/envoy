@@ -15,6 +15,7 @@
 #include "envoy/server/listener_manager.h"
 #include "envoy/upstream/outlier_detection.h"
 #include "envoy/upstream/resource_manager.h"
+#include "envoy/network/transport_socket.h"
 
 #include "common/common/logger.h"
 #include "common/common/macros.h"
@@ -199,6 +200,7 @@ private:
     Stats::Scope& listenerScope() override { return *scope_; }
     uint64_t listenerTag() const override { return 0; }
     const std::string& name() const override { return name_; }
+    Network::TransportSocketPtr createTransportSocket() const override { return nullptr; }
 
     AdminImpl& parent_;
     const std::string name_;

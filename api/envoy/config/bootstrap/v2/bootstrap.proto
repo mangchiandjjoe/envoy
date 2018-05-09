@@ -119,6 +119,9 @@ message Bootstrap {
 
   // Configuration for the local administration HTTP server.
   Admin admin = 12 [(validate.rules).message.required = true, (gogoproto.nullable) = false];
+
+  // Configuration for the secret manager which owns static and dynamic secrets
+  SecretManager secret_manager = 14;
 }
 
 // Administration interface :ref:`operations documentation
@@ -166,6 +169,13 @@ message ClusterManager {
   // <envoy_api_field_core.ApiConfigSource.api_type>` :ref:`GRPC
   // <envoy_api_enum_value_core.ApiConfigSource.ApiType.GRPC>`.
   envoy.api.v2.core.ApiConfigSource load_stats_config = 4;
+}
+
+// Secret manager :ref:`architecture overview <arch_overview_secret_manager>`.
+message SecretManager {
+  // Secret manager stores cached secrets to the configured directory.
+  // [#not-implemented-hide:]
+  string cache_directory = 1;
 }
 
 // Envoy process watchdog configuration. When configured, this monitors for

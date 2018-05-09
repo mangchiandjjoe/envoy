@@ -24,6 +24,7 @@
 #include "common/network/utility.h"
 
 #include "server/lds_api.h"
+#include "common/secret/sds_api.h"
 
 namespace Envoy {
 namespace Server {

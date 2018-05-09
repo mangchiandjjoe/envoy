@@ -33,6 +33,8 @@ bool validateProtoDescriptors() {
       "envoy.service.accesslog.v2.AccessLogService.StreamAccessLogs",
       "envoy.service.metrics.v2.MetricsService.StreamMetrics",
       "envoy.service.ratelimit.v2.RateLimitService.ShouldRateLimit",
+      "envoy.service.discovery.v2.SecretDiscoveryService.StreamSecrets",
+      "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets",
   };
 
   for (const auto& method : methods) {

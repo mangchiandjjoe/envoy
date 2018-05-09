@@ -362,6 +362,9 @@ public:
 
   bool drainConnectionsOnHostRemoval() const override { return drain_connections_on_host_removal_; }
 
+  bool refreshTransportSocketFactory(const std::string& sds_secret_name) override;
+  Secret::SecretManager& secretManager() { return ssl_context_manager_.secretManager(); }
+
 private:
   struct ResourceManagers {
     ResourceManagers(const envoy::api::v2::Cluster& config, Runtime::Loader& runtime,
@@ -401,6 +404,9 @@ private:
   const envoy::api::v2::Cluster::CommonLbConfig common_lb_config_;
   const Network::ConnectionSocket::OptionsSharedPtr cluster_socket_options_;
   const bool drain_connections_on_host_removal_;
+
+  const envoy::api::v2::core::TransportSocket transport_socker_;
+  const std::set<std::string> sds_secret_names_;
 };
 
 /**
@@ -449,6 +455,7 @@ public:
   Outlier::Detector* outlierDetector() override { return outlier_detector_.get(); }
   const Outlier::Detector* outlierDetector() const override { return outlier_detector_.get(); }
   void initialize(std::function<void()> callback) override;
+  bool sdsSecretUpdated(const std::string& sds_secret_name) override;
 
 protected:
   ClusterImplBase(const envoy::api::v2::Cluster& cluster,
