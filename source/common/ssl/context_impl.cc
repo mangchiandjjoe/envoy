@@ -143,10 +143,21 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
     bssl::UniquePtr<BIO> bio(
         BIO_new_mem_buf(const_cast<char*>(config.certChain().data()), config.certChain().size()));
     RELEASE_ASSERT(bio != nullptr);
+
+
     cert_chain_.reset(PEM_read_bio_X509_AUX(bio.get(), nullptr, nullptr, nullptr));
+
+    std::cout << __FILE__ << ":" << __LINE__ << " (cert_chain_ == nullptr)=" << (cert_chain_ == nullptr ) << std::endl;
+    std::cout << __FILE__ << ":" << __LINE__ << " (SSL_CTX_use_certificate(ctx_.get(), cert_chain_.get()))=" << (SSL_CTX_use_certificate(ctx_.get(), cert_chain_.get())) << std::endl;
+
+    std::cout << __FILE__ << ":" << __LINE__ << " (ctx_.get())=" << (ctx_.get() ) << std::endl;
+    std::cout << __FILE__ << ":" << __LINE__ << " (cert_chain_.get())=" << (cert_chain_.get() ) << std::endl;
+    std::cout << __FILE__ << ":" << __LINE__ << " (bio.get())=" << (bio.get() ) << std::endl;
+
+
     if (cert_chain_ == nullptr || !SSL_CTX_use_certificate(ctx_.get(), cert_chain_.get())) {
       throw EnvoyException(
-          fmt::format("Failed to load certificate chain from 1{}", config.certChainPath()));
+          fmt::format("Failed to load certificate chain from 1 {}", config.certChainPath()));
     }
     // Read rest of the certificate chain.
     while (true) {
@@ -173,8 +184,13 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
     // Load private key.
     bio.reset(
         BIO_new_mem_buf(const_cast<char*>(config.privateKey().data()), config.privateKey().size()));
+    std::cout << __FILE__ << ":" << __LINE__ << " (bio.get())=" << (bio.get() ) << std::endl;
     RELEASE_ASSERT(bio != nullptr);
     bssl::UniquePtr<EVP_PKEY> pkey(PEM_read_bio_PrivateKey(bio.get(), nullptr, nullptr, nullptr));
+
+    std::cout << __FILE__ << ":" << __LINE__ << " (pkey.get())=" << (pkey.get() ) << std::endl;
+
+
     if (pkey == nullptr || !SSL_CTX_use_PrivateKey(ctx_.get(), pkey.get())) {
       throw EnvoyException(
           fmt::format("Failed to load private key from {}", config.privateKeyPath()));
@@ -430,20 +446,7 @@ ServerContextImpl::ServerContextImpl(ContextManagerImpl& parent, const std::stri
       session_ticket_keys_(config.sessionTicketKeys()) {
 
   if (config.certChain().empty()) {
-    if(config.sdsDynamicSecretName().empty()) {
-      throw EnvoyException("Server TlsCertificates must have a certificate specified");
-    }
-/*
-    int retries = 500;
-    do {
-      if (!config.certChain().empty()) {
-        break;
-      }
-      retries--;
-      std::cout << __FILE__ << ":" << __LINE__ << " " << std::endl;
-      std::this_thread::sleep_for (std::chrono::microseconds(1000000));
-    } while (retries > 0);
-*/
+    throw EnvoyException("Server TlsCertificates must have a certificate specified");
   }
 
   SSL_CTX_set_select_certificate_cb(
