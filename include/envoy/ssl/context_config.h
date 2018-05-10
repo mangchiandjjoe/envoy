@@ -63,7 +63,7 @@ public:
   /**
    * @return The certificate chain used to identify the local side.
    */
-  virtual const std::string certChain() const PURE;
+  virtual const std::string& certChain() const PURE;
 
   /**
    * @return Path of the certificate chain used to identify the local side or "<inline>"
@@ -74,7 +74,7 @@ public:
   /**
    * @return The private key used to identify the local side.
    */
-  virtual const std::string privateKey() const PURE;
+  virtual const std::string& privateKey() const PURE;
 
   /**
    * @return Path of the private key used to identify the local side or "<inline>"

@@ -113,22 +113,22 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
   }
 }
 
-const std::string ContextConfigImpl::certChain() const {
+const std::string& ContextConfigImpl::certChain() const {
   if(sds_dynamic_secret_name_.empty()) {
     return cert_chain_;
   }
 
   auto secret = secret_manager_.getDynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_);
-  return secret.get() == nullptr ? cert_chain_: std::string(secret->getCertificateChain());
+  return secret.get() == nullptr ? cert_chain_: secret->getCertificateChain();
 }
 
-const std::string ContextConfigImpl::privateKey() const {
+const std::string& ContextConfigImpl::privateKey() const {
   if(sds_dynamic_secret_name_.empty()) {
     return private_key_;
   }
 
   auto secret = secret_manager_.getDynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_);
-  return secret.get() == nullptr ? cert_chain_: secret->getPrivateKey();
+  return secret.get() == nullptr ? private_key_: secret->getPrivateKey();
 }
 
 unsigned ContextConfigImpl::tlsVersionFromProto(

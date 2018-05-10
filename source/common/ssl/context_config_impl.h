@@ -33,11 +33,11 @@ public:
                ? INLINE_STRING
                : certificate_revocation_list_path_;
   }
-  const std::string certChain() const override;
+  const std::string& certChain() const override;
   const std::string& certChainPath() const override {
     return (cert_chain_path_.empty() && !cert_chain_.empty()) ? INLINE_STRING : cert_chain_path_;
   }
-  const std::string privateKey() const override;
+  const std::string& privateKey() const override;
   const std::string& privateKeyPath() const override {
     return (private_key_path_.empty() && !private_key_.empty()) ? INLINE_STRING : private_key_path_;
   }

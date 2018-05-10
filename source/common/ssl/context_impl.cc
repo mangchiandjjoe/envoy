@@ -129,19 +129,16 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
     SSL_CTX_set_cert_verify_callback(ctx_.get(), ContextImpl::verifyCallback, this);
   }
 
-  const std::string cert_chain = config.certChain();
-  const std::string private_key = config.privateKey();
-
-  if (config.certChain().empty() != private_key.empty()) {
+  if (config.certChain().empty() != config.privateKey().empty()) {
     throw EnvoyException(fmt::format("Failed to load incomplete certificate from {}, {}",
                                      config.certChainPath(), config.privateKeyPath()));
   }
 
-  if (!cert_chain.empty()) {
+  if (!config.certChain().empty()) {
     // Load certificate chain.
     cert_chain_file_path_ = config.certChainPath();
     bssl::UniquePtr<BIO> bio(
-        BIO_new_mem_buf(const_cast<char*>(cert_chain.data()), cert_chain.size()));
+        BIO_new_mem_buf(const_cast<char*>(config.certChain().data()), config.certChain().size()));
 
     RELEASE_ASSERT(bio != nullptr);
 
@@ -175,7 +172,7 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
 
     // Load private key.
     bio.reset(
-        BIO_new_mem_buf(const_cast<char*>(private_key.data()), private_key.size()));
+        BIO_new_mem_buf(const_cast<char*>(config.privateKey().data()), config.privateKey().size()));
     RELEASE_ASSERT(bio != nullptr);
     bssl::UniquePtr<EVP_PKEY> pkey(PEM_read_bio_PrivateKey(bio.get(), nullptr, nullptr, nullptr));
 

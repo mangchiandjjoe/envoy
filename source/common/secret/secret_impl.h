@@ -14,15 +14,15 @@ class SecretImpl : public Secret, Logger::Loggable<Logger::Id::upstream> {
   virtual ~SecretImpl() {
   }
 
-  const std::string getName() override {
+  const std::string& getName() override {
     return name_;
   }
 
-  const std::string getCertificateChain() override {
+  const std::string& getCertificateChain() override {
     return certificate_chain_;
   }
 
-  const std::string getPrivateKey() override {
+  const std::string& getPrivateKey() override {
     return private_key_;
   }
 

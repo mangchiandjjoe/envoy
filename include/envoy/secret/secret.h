@@ -22,16 +22,16 @@ class Secret {
   /**
    * @return a name of the SDS secret
    */
-  virtual const std::string getName() PURE;
+  virtual const std::string& getName() PURE;
 
   /**
    * @return a string of certificate chain
    */
-  virtual const std::string getCertificateChain() PURE;
+  virtual const std::string& getCertificateChain() PURE;
   /**
    * @return a string of private key
    */
-  virtual const std::string getPrivateKey() PURE;
+  virtual const std::string& getPrivateKey() PURE;
 };
 
 typedef std::shared_ptr<Secret> SecretPtr;
