@@ -37,6 +37,12 @@
 namespace Envoy {
 namespace Upstream {
 
+namespace {
+
+const int kPendingListenerTimerInterval = 1000;
+
+}
+
 void ClusterManagerInitHelper::addCluster(Cluster& cluster) {
   // See comments in ClusterManagerImpl::addOrUpdateCluster() for why this is only called during
   // server initialization.
@@ -177,30 +183,28 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
       init_helper_([this](Cluster& cluster) { onClusterInit(cluster); }),
       secret_manager_(secret_manager) {
 
-  // initialize pending_listeners handler
+  // initialize pending clusters timer handler
   pending_clusters_timer_ = main_thread_dispatcher.createTimer([this]() -> void {
     std::shared_lock < std::shared_timed_mutex > rhs(pending_clusters_mutex_);
-
-    ENVOY_LOG(info, "pending timer triggered {} clusters are pending...",
-              pending_clusters_.size());
 
     if(pending_clusters_.empty()) {
       return;
     }
 
-    std::vector<envoy::api::v2::Cluster> clusters;
-    for(auto listener: pending_clusters_) {
-      clusters.push_back(listener);
+    ENVOY_LOG(info, "pending timer triggered {} clusters are pending...",
+              pending_clusters_.size());
+
+    std::vector<envoy::api::v2::Cluster> creation_clusters;
+    for(auto cluster: pending_clusters_) {
+      creation_clusters.push_back(cluster);
     }
     pending_clusters_.clear();
 
-    for(auto cluster: clusters) {
+    for(auto cluster: creation_clusters) {
       addOrUpdateCluster(cluster);
     }
   });
-  pending_clusters_timer_->enableTimer(std::chrono::milliseconds(1000));
-
-
+  pending_clusters_timer_->enableTimer(std::chrono::milliseconds(kPendingListenerTimerInterval));
 
   async_client_manager_ = std::make_unique<Grpc::AsyncClientManagerImpl>(*this, tls);
   const auto& cm_config = bootstrap.cluster_manager();

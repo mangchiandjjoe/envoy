@@ -49,5 +49,11 @@ public:
 };
 
 
+class EnvoyDynamicSecretNotReadyException : public EnvoyException {
+public:
+  EnvoyDynamicSecretNotReadyException(const std::string& message) : EnvoyException(message) {}
+};
+
+
 }  // namespace Secret
 }  // namespace Envoy
