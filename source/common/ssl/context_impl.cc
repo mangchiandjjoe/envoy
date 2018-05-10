@@ -139,11 +139,8 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
     cert_chain_file_path_ = config.certChainPath();
     bssl::UniquePtr<BIO> bio(
         BIO_new_mem_buf(const_cast<char*>(config.certChain().data()), config.certChain().size()));
-
     RELEASE_ASSERT(bio != nullptr);
-
     cert_chain_.reset(PEM_read_bio_X509_AUX(bio.get(), nullptr, nullptr, nullptr));
-
     if (cert_chain_ == nullptr || !SSL_CTX_use_certificate(ctx_.get(), cert_chain_.get())) {
       throw EnvoyException(
           fmt::format("Failed to load certificate chain from {}", config.certChainPath()));
@@ -167,7 +164,7 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
       ERR_clear_error();
     } else {
       throw EnvoyException(
-          fmt::format("Failed to load certificate chain from q{}", config.certChainPath()));
+          fmt::format("Failed to load certificate chain from {}", config.certChainPath()));
     }
 
     // Load private key.
@@ -175,7 +172,6 @@ ContextImpl::ContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
         BIO_new_mem_buf(const_cast<char*>(config.privateKey().data()), config.privateKey().size()));
     RELEASE_ASSERT(bio != nullptr);
     bssl::UniquePtr<EVP_PKEY> pkey(PEM_read_bio_PrivateKey(bio.get(), nullptr, nullptr, nullptr));
-
     if (pkey == nullptr || !SSL_CTX_use_PrivateKey(ctx_.get(), pkey.get())) {
       throw EnvoyException(
           fmt::format("Failed to load private key from {}", config.privateKeyPath()));
