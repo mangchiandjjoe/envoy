@@ -3,22 +3,17 @@
 #include <string>
 #include <shared_mutex>
 
-#include "openssl/ssl.h"
-
-#include "envoy/config/bootstrap/v2/bootstrap.pb.h"
 #include "envoy/api/v2/auth/cert.pb.h"
+#include "envoy/config/bootstrap/v2/bootstrap.pb.h"
 
 #include "envoy/server/instance.h"
 
-#include "common/common/assert.h"
 #include "common/common/logger.h"
 #include "common/secret/secret_impl.h"
-#include "common/filesystem/filesystem_impl.h"
-#include "common/protobuf/utility.h"
 #include "common/config/tls_context_json.h"
-#include "common/filesystem/filesystem_impl.h"
-#include "common/protobuf/utility.h"
 #include "common/common/logger.h"
+
+#include "openssl/ssl.h"
 
 namespace Envoy {
 namespace Secret {

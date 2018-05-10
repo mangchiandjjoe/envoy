@@ -41,19 +41,24 @@ typedef std::unordered_map<std::string, SecretPtr> SecretInfoMap;
 typedef std::vector<SecretPtr> SecretInfoVector;
 
 /**
- *
+ * Throws when the requested static secret is not available
  */
 class EnvoyStaticSecretException : public EnvoyException {
-public:
-  EnvoyStaticSecretException(const std::string& message) : EnvoyException(message) {}
+ public:
+  EnvoyStaticSecretException(const std::string& message)
+      : EnvoyException(message) {
+  }
 };
 
-
+/**
+ * Throws when the requested dynamic secret is not available
+ */
 class EnvoyDynamicSecretNotReadyException : public EnvoyException {
-public:
-  EnvoyDynamicSecretNotReadyException(const std::string& message) : EnvoyException(message) {}
+ public:
+  EnvoyDynamicSecretNotReadyException(const std::string& message)
+      : EnvoyException(message) {
+  }
 };
-
 
 }  // namespace Secret
 }  // namespace Envoy

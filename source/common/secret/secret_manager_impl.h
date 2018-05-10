@@ -6,7 +6,6 @@
 #include "envoy/config/bootstrap/v2/bootstrap.pb.h"
 
 #include "envoy/server/instance.h"
-#include "envoy/server/worker.h"
 #include "envoy/secret/secret_manager.h"
 #include "envoy/secret/secret.h"
 
@@ -29,21 +28,18 @@ class SecretManagerImpl : public SecretManager, Logger::Loggable<Logger::Id::ups
 
   bool addOrUpdateStaticSecret(const SecretPtr secret) override;
 
-  bool addOrUpdateDynamicSecret(const uint64_t config_source_hash, const SecretPtr secret)
-      override;
+  bool addOrUpdateDynamicSecret(const uint64_t config_source_hash, const SecretPtr secret) override;
 
   bool addOrUpdateDynamicSecrets(const uint64_t config_source_hash,
                                  const SecretInfoVector& resources) override;
 
   SecretPtr getStaticSecret(const std::string& name) override;
-  SecretPtr getDynamicSecret(const uint64_t config_source_hash, const std::string& name)
-      override;
+  SecretPtr getDynamicSecret(const uint64_t config_source_hash, const std::string& name) override;
 
   // SecretManagerImpl
   bool removeDynamicSecret(const uint64_t config_source_hash, const std::string& name);
 
-  bool addOrUpdateDynamicSecretInternal(const uint64_t config_source_hash,
-                                        const SecretPtr secret);
+  bool addOrUpdateDynamicSecretInternal(const uint64_t config_source_hash, const SecretPtr secret);
 
  private:
   Server::Instance& server_;

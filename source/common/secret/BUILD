@@ -13,13 +13,8 @@ envoy_cc_library(
     srcs = ["secret_impl.cc"],
     hdrs = ["secret_impl.h"],
     deps = [
-        "//source/common/ssl:context_config_lib",
         "//source/common/ssl:context_lib",
         "//include/envoy/secret:secret_interface",
-        "//source/common/common:assert_lib",
-        "//source/common/common:empty_string",
-        "//source/common/common:logger_lib",
-        "//source/common/http:headers_lib",
     ],
 )
 
@@ -29,11 +24,9 @@ envoy_cc_library(
     hdrs = ["sds_subscription.h"],
     deps = [
         "//include/envoy/config:subscription_interface",
-        "//source/common/common:assert_lib",
         "//source/common/config:lds_json_lib",
         "//source/common/config:utility_lib",
         "//source/common/http:rest_api_fetcher_lib",
-        "//source/common/json:config_schemas_lib",
         "//source/common/json:json_validator_lib",
     ],
 )
@@ -47,15 +40,10 @@ envoy_cc_library(
         ":secret_impl_lib",
         "//include/envoy/config:subscription_interface",
         "//include/envoy/secret:secret_interface",
-        "//include/envoy/server:instance_interface",
-        "//include/envoy/init:init_interface",
-        "//include/envoy/server:listener_manager_interface",
         "//include/envoy/secret:secret_manager_interface",
-        "//source/common/common:cleanup_lib",
+        "//include/envoy/server:instance_interface",
         "//source/common/config:resources_lib",
         "//source/common/config:subscription_factory_lib",
-        "//source/common/config:utility_lib",
-        "//source/common/protobuf:utility_lib",
     ],
 )
 
@@ -66,17 +54,7 @@ envoy_cc_library(
     deps = [
         ":sds_api_lib",
         ":secret_impl_lib",
-        "//include/envoy/config:subscription_interface",
-        "//source/common/common:assert_lib",
-        "//source/common/config:lds_json_lib",
-        "//source/common/config:utility_lib",
         "//include/envoy/server:instance_interface",
         "//include/envoy/secret:secret_manager_interface",
-        "//include/envoy/server:worker_interface",
-        "//include/envoy/ssl:context_manager_interface",
-        "//source/common/http:rest_api_fetcher_lib",
-        "//source/common/json:config_schemas_lib",
-        "//source/common/json:json_validator_lib",
-        "@envoy_api//envoy/api/v2:lds_cc",
     ],
 )

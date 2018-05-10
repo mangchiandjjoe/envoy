@@ -3,14 +3,7 @@
 #include <string>
 
 #include "common/common/assert.h"
-#include "common/ssl/context_config_impl.h"
 #include "common/filesystem/filesystem_impl.h"
-#include "common/protobuf/utility.h"
-#include "common/config/tls_context_json.h"
-#include "common/filesystem/filesystem_impl.h"
-#include "common/protobuf/utility.h"
-
-#include "openssl/ssl.h"
 
 namespace Envoy {
 namespace Secret {

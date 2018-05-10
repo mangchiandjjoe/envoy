@@ -1,21 +1,14 @@
-
 #include <unordered_map>
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/api/v2/auth/cert.pb.validate.h"
 #include "envoy/secret/secret_manager.h"
 
-#include "common/common/cleanup.h"
 #include "common/config/resources.h"
 #include "common/config/subscription_factory.h"
-#include "common/config/utility.h"
-#include "common/protobuf/utility.h"
 #include "common/secret/sds_api.h"
 #include "common/secret/sds_subscription.h"
 #include "common/secret/secret_impl.h"
-#include "common/common/logger.h"
-
-
 
 namespace Envoy {
 namespace Secret {

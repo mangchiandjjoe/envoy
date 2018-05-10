@@ -18,7 +18,6 @@ envoy_cc_library(
     hdrs = ["secret_manager.h"],
     deps = [
         ":secret_interface",
-        "//include/envoy/config:subscription_interface",
         "//source/common/json:json_loader_lib",
         "@envoy_api//envoy/config/bootstrap/v2:bootstrap_cc",
     ]

@@ -2,12 +2,11 @@
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/secret/secret.h"
-#include "common/common/logger.h"
 
 namespace Envoy {
 namespace Secret {
 
-class SecretImpl : public Secret, Logger::Loggable<Logger::Id::upstream> {
+class SecretImpl : public Secret {
  public:
   SecretImpl(const envoy::api::v2::auth::Secret& config);
 

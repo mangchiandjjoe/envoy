@@ -5,7 +5,6 @@
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/config/subscription.h"
-#include "envoy/init/init.h"
 #include "envoy/server/instance.h"
 #include "envoy/secret/secret_manager.h"
 
@@ -26,10 +25,6 @@ class SdsApi : public Init::Target, Config::SubscriptionCallbacks<envoy::api::v2
 
   virtual ~SdsApi() {
   }
-
-  //const std::string versionInfo() const {
-  //  return subscription_->versionInfo();
-  //}
 
   // Init::Target
   void initialize(std::function<void()> callback) override;

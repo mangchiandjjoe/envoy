@@ -5,8 +5,6 @@
 
 #include "envoy/api/v2/core/base.pb.h"
 #include "envoy/config/subscription.h"
-
-#include "common/common/assert.h"
 #include "common/http/rest_api_fetcher.h"
 
 namespace Envoy {
@@ -16,15 +14,13 @@ namespace Secret {
  * Subscription implementation that reads host information from the v1 REST Service Discovery
  * Service.
  */
-class SdsSubscription : public Http::RestApiFetcher,
-    public Config::Subscription<envoy::api::v2::auth::Secret>,
-    Logger::Loggable<Logger::Id::upstream> {
+class SdsSubscription : public Http::RestApiFetcher, public Config::Subscription<
+    envoy::api::v2::auth::Secret>, Logger::Loggable<Logger::Id::upstream> {
  public:
   SdsSubscription(Config::SubscriptionStats stats,
                   const envoy::api::v2::core::ConfigSource& sds_config,
                   Upstream::ClusterManager& cm, Event::Dispatcher& dispatcher,
-                  Runtime::RandomGenerator& random,
-                  const LocalInfo::LocalInfo& local_info);
+                  Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info);
 
   // Config::Subscription
   //const std::string versionInfo() const override {
@@ -33,7 +29,8 @@ class SdsSubscription : public Http::RestApiFetcher,
 
  private:
   // Config::Subscription
-  void start(const std::vector<std::string>& resources, Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret>& callbacks) override {
+  void start(const std::vector<std::string>& resources,
+             Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret>& callbacks) override {
     // We can only handle a single cluster here, it's a design error to ever use this type of
     // Subscription with more than a single cluster.
     ASSERT(resources.size() == 1);
@@ -57,7 +54,7 @@ class SdsSubscription : public Http::RestApiFetcher,
 
   std::string cluster_name_;
   std::string version_info_;
-  Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret>* callbacks_ =  nullptr;
+  Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret>* callbacks_ = nullptr;
   Config::SubscriptionStats& stats_;
   const LocalInfo::LocalInfo& local_info_;
 };
