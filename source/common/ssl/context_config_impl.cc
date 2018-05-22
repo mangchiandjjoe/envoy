@@ -30,8 +30,7 @@ const std::string ContextConfigImpl::DEFAULT_ECDH_CURVES = "X25519:P-256";
 
 ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config,
                                      Secret::SecretManager& secret_manager)
-    : secret_manager_(secret_manager),
-      sds_dynamic_secret_name_([&config, &secret_manager] {
+    : secret_manager_(secret_manager), sds_dynamic_secret_name_([&config, &secret_manager] {
         return (!config.tls_certificate_sds_secret_configs().empty() &&
                 config.tls_certificate_sds_secret_configs()[0].has_sds_config())
                    ? config.tls_certificate_sds_secret_configs()[0].name()
@@ -61,14 +60,15 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           return Config::DataSource::read(config.tls_certificates()[0].certificate_chain(), true);
         } else if (!config.tls_certificate_sds_secret_configs().empty()) {
           if (config.tls_certificate_sds_secret_configs()[0].has_sds_config()) {
-            if (secret_manager.getDynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_) == nullptr) {
+            if (secret_manager.getDynamicSecret(sds_config_source_hash_,
+                                                sds_dynamic_secret_name_) == nullptr) {
               throw EnvoyResourceDependencyException(
                   fmt::format("Dynamic secret is not ready yet: {}",
                               config.tls_certificate_sds_secret_configs()[0].name()));
             }
           } else {
-            auto secret =
-                secret_manager.getStaticSecret(config.tls_certificate_sds_secret_configs()[0].name());
+            auto secret = secret_manager.getStaticSecret(
+                config.tls_certificate_sds_secret_configs()[0].name());
             if (secret == nullptr) {
               throw EnvoyResourceDependencyException(
                   fmt::format("Static secret is not ready yet: {}",
@@ -88,7 +88,8 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           return Config::DataSource::read(config.tls_certificates()[0].private_key(), true);
         } else if (!config.tls_certificate_sds_secret_configs().empty()) {
           if (config.tls_certificate_sds_secret_configs()[0].has_sds_config()) {
-            if (secret_manager.getDynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_) == nullptr) {
+            if (secret_manager.getDynamicSecret(sds_config_source_hash_,
+                                                sds_dynamic_secret_name_) == nullptr) {
               throw EnvoyResourceDependencyException(
                   fmt::format("Dynamic secret is not ready yet: {}",
                               config.tls_certificate_sds_secret_configs()[0].name()));

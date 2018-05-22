@@ -172,7 +172,7 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, const std::st
   // and it doesn't enforce any SNI restrictions.
   const bool skip_context_update =
       (config_.filter_chains().size() == 1 &&
-          config_.filter_chains()[0].filter_chain_match().sni_domains().empty());
+       config_.filter_chains()[0].filter_chain_match().sni_domains().empty());
 
   absl::optional<uint64_t> filters_hash;
   uint32_t has_tls = 0;
@@ -250,12 +250,9 @@ ListenerImpl::~ListenerImpl() {
   filter_factories_.clear();
 }
 
-void ListenerImpl::createTransportSocketFactory(const Secret::SecretSharedPtr ) {
+void ListenerImpl::createTransportSocketFactory(const Secret::SecretSharedPtr) {
   transport_socket_factories_.clear();
-
-
 }
-
 
 bool ListenerImpl::createNetworkFilterChain(Network::Connection& connection) {
   return Configuration::FilterChainUtility::buildFilterChain(connection, filter_factories_);
@@ -322,8 +319,8 @@ void ListenerImpl::setSocket(const Network::SocketSharedPtr& socket) {
   }
 }
 
-void ListenerImpl::onAddOrUpdateSecret(const uint64_t, const Secret::SecretSharedPtr) {
-  //
+void ListenerImpl::onAddOrUpdateSecret(const uint64_t hash, const Secret::SecretSharedPtr secret) {
+  transportSocketFactory().updateSecret(hash, secret);
 }
 
 ListenerManagerImpl::ListenerManagerImpl(Instance& server,
@@ -367,13 +364,22 @@ ProtobufTypes::MessagePtr ListenerManagerImpl::dumpListenerConfigs() {
   return config_dump;
 }
 
-void ListenerManagerImpl::onAddOrUpdateSecret(const uint64_t,
-                                              const Secret::SecretSharedPtr) {
+void ListenerManagerImpl::onAddOrUpdateSecret(const uint64_t hash,
+                                              const Secret::SecretSharedPtr secret) {
+
+  for (auto& active_listener : active_listeners_) {
+    active_listener->onAddOrUpdateSecret(hash, secret);
+  }
+
+  for (auto& warming_listener : warming_listeners_) {
+    warming_listener->onAddOrUpdateSecret(hash, secret);
+  }
+
   std::vector<PendingListenerInfo> listeners;
 
   {
     std::unique_lock<std::shared_timed_mutex> lhs(pending_listeners_mutex_);
-    if(pending_listeners_.empty()) {
+    if (pending_listeners_.empty()) {
       return;
     }
 
@@ -428,9 +434,9 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
 
   try {
     new_listener =
-      ListenerImplPtr(new ListenerImpl(config, version_info, *this, name, modifiable,
-                                       workers_started_, hash, server_.secretManager()));
-  } catch(const EnvoyResourceDependencyException& e) {
+        ListenerImplPtr(new ListenerImpl(config, version_info, *this, name, modifiable,
+                                         workers_started_, hash, server_.secretManager()));
+  } catch (const EnvoyResourceDependencyException& e) {
     ENVOY_LOG(
         info,
         "required resources are not ready yet. added listener to pending creation list: {} {}",

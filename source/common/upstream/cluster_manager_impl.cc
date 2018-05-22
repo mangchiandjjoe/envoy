@@ -171,8 +171,7 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
                                        const LocalInfo::LocalInfo& local_info,
                                        AccessLog::AccessLogManager& log_manager,
                                        Event::Dispatcher& main_thread_dispatcher,
-                                       Server::Admin& admin,
-                                       Secret::SecretManager& secret_manager)
+                                       Server::Admin& admin, Secret::SecretManager& secret_manager)
     : factory_(factory), runtime_(runtime), stats_(stats), tls_(tls.allocateSlot()),
       random_(random), bind_config_(bootstrap.cluster_manager().upstream_bind_config()),
       local_info_(local_info), cm_stats_(generateStats(stats)),
@@ -482,14 +481,22 @@ bool ClusterManagerImpl::removeCluster(const std::string& cluster_name) {
   return removed;
 }
 
+void ClusterManagerImpl::onAddOrUpdateSecret(const uint64_t hash,
+                                             const Secret::SecretSharedPtr secret) {
+  // refresh secrets when necessary
+  for (auto& active_cluster : active_clusters_) {
+    active_cluster.second->cluster_->info()->transportSocketFactory().updateSecret(hash, secret);
+  }
+  for (const auto& warming_cluster : warming_clusters_) {
+    warming_cluster.second->cluster_->info()->transportSocketFactory().updateSecret(hash, secret);
+  }
 
-void ClusterManagerImpl::onAddOrUpdateSecret(const uint64_t,
-                                              const Secret::SecretSharedPtr) {
+  // create clusters remain in the pending creating list
   std::vector<PendingClusterInfo> clusters;
 
   {
     std::unique_lock<std::shared_timed_mutex> lhs(pending_clusters_mutex_);
-    if(pending_clusters_.empty()) {
+    if (pending_clusters_.empty()) {
       return;
     }
 
@@ -518,10 +525,9 @@ void ClusterManagerImpl::loadCluster(const envoy::api::v2::Cluster& cluster,
     new_cluster = ClusterSharedPtr(
         factory_.clusterFromProto(cluster, *this, outlier_event_logger_, added_via_api));
   } catch (const EnvoyResourceDependencyException& e) {
-    ENVOY_LOG(
-        info,
-        "required resources are not ready yet. added cluster to pending creation list: {} {}",
-        cluster.name(), e.what());
+    ENVOY_LOG(info,
+              "required resources are not ready yet. added cluster to pending creation list: {} {}",
+              cluster.name(), e.what());
     {
       std::unique_lock<std::shared_timed_mutex> lhs(pending_clusters_mutex_);
       pending_clusters_.push_back({cluster, version_info});

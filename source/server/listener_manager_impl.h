@@ -104,9 +104,7 @@ struct PendingListenerInfo {
           cfg.CopyFrom(config_);
           return cfg;
         }()),
-        version_info(version_info_),
-        modifiable(modifiable_) {
-  }
+        version_info(version_info_), modifiable(modifiable_) {}
 };
 
 /**

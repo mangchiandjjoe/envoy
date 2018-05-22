@@ -47,7 +47,7 @@ bool SecretManagerImpl::addOrUpdateDynamicSecret(const uint64_t config_source_ha
   sds_service->second[secret->name()] = secret;
 
   // Post callback to call registered SecretCallbacks functions
-  std::function<void ()> lambda = [this, config_source_hash, secret]() {
+  std::function<void()> lambda = [this, config_source_hash, secret]() {
     for (const auto& callback : secret_callbacks_) {
       callback->onAddOrUpdateSecret(config_source_hash, secret);
     }

@@ -154,9 +154,7 @@ struct PendingClusterInfo {
           cfg.CopyFrom(config_);
           return cfg;
         }()),
-        version_info(version_info_) {
-  }
-
+        version_info(version_info_) {}
 };
 
 /**
@@ -363,7 +361,6 @@ private:
                                     const HostVector& hosts_added, const HostVector& hosts_removed);
   void postThreadLocalHealthFailure(const HostSharedPtr& host);
   void updateGauges();
-
 
   ClusterManagerFactory& factory_;
   Runtime::Loader& runtime_;

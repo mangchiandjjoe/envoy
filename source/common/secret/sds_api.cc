@@ -51,9 +51,8 @@ void SdsApi::onConfigUpdate(const ResourceVector& resources, const std::string&)
   for (const auto& resource : resources) {
     switch (resource.type_case()) {
     case envoy::api::v2::auth::Secret::kTlsCertificate:
-        secret_manager_.addOrUpdateDynamicSecret(
-            sds_config_source_hash_,
-            SecretSharedPtr(new SecretImpl(resource)));
+      secret_manager_.addOrUpdateDynamicSecret(sds_config_source_hash_,
+                                               SecretSharedPtr(new SecretImpl(resource)));
       break;
     case envoy::api::v2::auth::Secret::kSessionTicketKeys:
       NOT_IMPLEMENTED

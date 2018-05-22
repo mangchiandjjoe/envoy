@@ -36,7 +36,6 @@ public:
 
   void registerSecretCallback(SecretCallbacks& callback) override;
 
-
 private:
   Server::Instance& server_;
   SecretSharedPtrMap static_secrets_;
@@ -48,7 +47,7 @@ private:
 
   std::vector<SecretCallbacks*> secret_callbacks_;
 
-  std::function<void ()> secret_update_callback_;
+  std::function<void()> secret_update_callback_;
 };
 
 } // namespace Secret

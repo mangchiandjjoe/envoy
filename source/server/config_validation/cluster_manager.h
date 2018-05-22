@@ -35,6 +35,7 @@ public:
   CdsApiPtr createCds(const envoy::api::v2::core::ConfigSource& cds_config,
                       const absl::optional<envoy::api::v2::core::ConfigSource>& eds_config,
                       ClusterManager& cm) override;
+
 private:
   Secret::SecretManager& secret_manager_;
 };
@@ -49,8 +50,7 @@ public:
                            ThreadLocal::Instance& tls, Runtime::Loader& runtime,
                            Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
                            AccessLog::AccessLogManager& log_manager, Event::Dispatcher& dispatcher,
-                           Server::Admin& admin,
-                           Secret::SecretManager& secret_manager);
+                           Server::Admin& admin, Secret::SecretManager& secret_manager);
 
   Http::ConnectionPool::Instance* httpConnPoolForCluster(const std::string&, ResourcePriority,
                                                          Http::Protocol,

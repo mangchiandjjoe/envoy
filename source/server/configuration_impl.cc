@@ -68,7 +68,6 @@ void MainImpl::initialize(const envoy::config::bootstrap::v2::Bootstrap& bootstr
     } catch (const EnvoyResourceDependencyException& e) {
       ENVOY_LOG(debug, "dependent resource is not ready: '{}'", e.what());
     }
-
   }
 
   stats_flush_interval_ =

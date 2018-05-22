@@ -7,20 +7,19 @@ ValidationClusterManagerFactory::ValidationClusterManagerFactory(
     Runtime::Loader& runtime, Stats::Store& stats, ThreadLocal::Instance& tls,
     Runtime::RandomGenerator& random, Network::DnsResolverSharedPtr dns_resolver,
     Ssl::ContextManager& ssl_context_manager, Event::Dispatcher& main_thread_dispatcher,
-    const LocalInfo::LocalInfo& local_info,
-    Secret::SecretManager& secret_manager)
+    const LocalInfo::LocalInfo& local_info, Secret::SecretManager& secret_manager)
     : ProdClusterManagerFactory(runtime, stats, tls, random, dns_resolver, ssl_context_manager,
                                 main_thread_dispatcher, local_info),
-                                secret_manager_(secret_manager) {}
+      secret_manager_(secret_manager) {}
 
 ClusterManagerPtr ValidationClusterManagerFactory::clusterManagerFromProto(
     const envoy::config::bootstrap::v2::Bootstrap& bootstrap, Stats::Store& stats,
     ThreadLocal::Instance& tls, Runtime::Loader& runtime, Runtime::RandomGenerator& random,
     const LocalInfo::LocalInfo& local_info, AccessLog::AccessLogManager& log_manager,
     Server::Admin& admin) {
-  return ClusterManagerPtr{new ValidationClusterManager(bootstrap, *this, stats, tls, runtime,
-                                                        random, local_info, log_manager,
-                                                        main_thread_dispatcher_, admin, secret_manager_)};
+  return ClusterManagerPtr{
+      new ValidationClusterManager(bootstrap, *this, stats, tls, runtime, random, local_info,
+                                   log_manager, main_thread_dispatcher_, admin, secret_manager_)};
 }
 
 CdsApiPtr ValidationClusterManagerFactory::createCds(
@@ -40,7 +39,7 @@ ValidationClusterManager::ValidationClusterManager(
     Server::Admin& admin, Secret::SecretManager& secret_manager)
     : ClusterManagerImpl(bootstrap, factory, stats, tls, runtime, random, local_info, log_manager,
                          main_thread_dispatcher, admin, secret_manager),
-                         secret_manager_(secret_manager) {}
+      secret_manager_(secret_manager) {}
 
 Http::ConnectionPool::Instance*
 ValidationClusterManager::httpConnPoolForCluster(const std::string&, ResourcePriority,

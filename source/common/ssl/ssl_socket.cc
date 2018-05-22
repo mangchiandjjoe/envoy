@@ -385,8 +385,6 @@ Network::TransportSocketPtr ClientSslSocketFactory::createTransportSocket() cons
 bool ClientSslSocketFactory::implementsSecureTransport() const { return true; }
 
 bool ClientSslSocketFactory::updateSecret(const uint64_t, const Secret::SecretSharedPtr) {
-  // config_.refreshSecret()
-  // return config_.refreshSecret();
   return false;
 }
 
@@ -407,7 +405,6 @@ Network::TransportSocketPtr ServerSslSocketFactory::createTransportSocket() cons
 bool ServerSslSocketFactory::implementsSecureTransport() const { return true; }
 
 bool ServerSslSocketFactory::updateSecret(const uint64_t, const Secret::SecretSharedPtr) {
-  // return config_.refreshSecret();
   return true;
 }
 
