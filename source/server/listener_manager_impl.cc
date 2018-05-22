@@ -319,10 +319,6 @@ void ListenerImpl::setSocket(const Network::SocketSharedPtr& socket) {
   }
 }
 
-void ListenerImpl::onAddOrUpdateSecret(const uint64_t hash, const Secret::SecretSharedPtr secret) {
-  transportSocketFactory().updateSecret(hash, secret);
-}
-
 ListenerManagerImpl::ListenerManagerImpl(Instance& server,
                                          ListenerComponentFactory& listener_factory,
                                          WorkerFactory& worker_factory)
@@ -366,15 +362,16 @@ ProtobufTypes::MessagePtr ListenerManagerImpl::dumpListenerConfigs() {
 
 void ListenerManagerImpl::onAddOrUpdateSecret(const uint64_t hash,
                                               const Secret::SecretSharedPtr secret) {
-
+  // refresh listeners
   for (auto& active_listener : active_listeners_) {
-    active_listener->onAddOrUpdateSecret(hash, secret);
+    active_listener->transportSocketFactory().updateSecret(hash, secret);
   }
 
   for (auto& warming_listener : warming_listeners_) {
-    warming_listener->onAddOrUpdateSecret(hash, secret);
+    warming_listener->transportSocketFactory().updateSecret(hash, secret);
   }
 
+  // create listeners in the pending creating list
   std::vector<PendingListenerInfo> listeners;
 
   {

@@ -11,7 +11,7 @@ bool SecretManagerImpl::addOrUpdateStaticSecret(const SecretSharedPtr secret) {
   return true;
 }
 
-SecretSharedPtr SecretManagerImpl::getStaticSecret(const std::string& name) {
+const SecretSharedPtr SecretManagerImpl::staticSecret(const std::string& name) const {
   auto static_secret = static_secrets_.find(name);
   return (static_secret != static_secrets_.end()) ? static_secret->second : nullptr;
 }
@@ -57,8 +57,8 @@ bool SecretManagerImpl::addOrUpdateDynamicSecret(const uint64_t config_source_ha
   return true;
 }
 
-SecretSharedPtr SecretManagerImpl::getDynamicSecret(const uint64_t config_source_hash,
-                                                    const std::string& name) {
+const SecretSharedPtr SecretManagerImpl::dynamicSecret(const uint64_t config_source_hash,
+                                                       const std::string& name) const {
   std::shared_lock<std::shared_timed_mutex> lhs(dynamic_secret_mutex_);
 
   auto sds_service = dynamic_secrets_.find(config_source_hash);

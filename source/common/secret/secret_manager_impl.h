@@ -22,15 +22,15 @@ public:
   virtual ~SecretManagerImpl() {}
 
   bool addOrUpdateStaticSecret(const SecretSharedPtr secret) override;
-  SecretSharedPtr getStaticSecret(const std::string& name) override;
+  const SecretSharedPtr staticSecret(const std::string& name) const override;
 
   uint64_t
   addOrUpdateSdsConfigSource(const envoy::api::v2::core::ConfigSource& config_source) override;
 
   bool addOrUpdateDynamicSecret(const uint64_t config_source_hash,
                                 const SecretSharedPtr secret) override;
-  SecretSharedPtr getDynamicSecret(const uint64_t config_source_hash,
-                                   const std::string& name) override;
+  const SecretSharedPtr dynamicSecret(const uint64_t config_source_hash,
+                                      const std::string& name) const override;
 
   bool removeDynamicSecret(const uint64_t config_source_hash, const std::string& name);
 

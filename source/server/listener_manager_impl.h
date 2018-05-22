@@ -208,7 +208,6 @@ class ListenerImpl : public Network::ListenerConfig,
                      public Network::DrainDecision,
                      public Network::FilterChainFactory,
                      public Configuration::TransportSocketFactoryContext,
-                     public Secret::SecretCallbacks,
                      Logger::Loggable<Logger::Id::config> {
 public:
   /**
@@ -318,8 +317,6 @@ public:
   // Configuration::TransportSocketFactoryContext
   Ssl::ContextManager& sslContextManager() override { return parent_.server_.sslContextManager(); }
   Stats::Scope& statsScope() const override { return *listener_scope_; }
-
-  void onAddOrUpdateSecret(const uint64_t hash, const Secret::SecretSharedPtr secret) override;
 
 private:
   void createTransportSocketFactory(const Secret::SecretSharedPtr secret);

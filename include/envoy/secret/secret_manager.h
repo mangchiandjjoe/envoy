@@ -44,7 +44,7 @@ public:
   /**
    * @return the static secret for the given name
    */
-  virtual SecretSharedPtr getStaticSecret(const std::string& name) PURE;
+  virtual const SecretSharedPtr staticSecret(const std::string& name) const PURE;
 
   /**
    *
@@ -63,7 +63,7 @@ public:
   /**
    * @return the dynamic secret for the given ConfigSource and secret name
    */
-  virtual SecretSharedPtr getDynamicSecret(const uint64_t hash, const std::string& name) PURE;
+  virtual const SecretSharedPtr dynamicSecret(const uint64_t hash, const std::string& name) const PURE;
 
 
   virtual void registerSecretCallback(SecretCallbacks& callback) PURE;
