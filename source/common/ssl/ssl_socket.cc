@@ -376,13 +376,19 @@ std::string SslSocket::subjectLocalCertificate() const {
 ClientSslSocketFactory::ClientSslSocketFactory(const ClientContextConfig& config,
                                                Ssl::ContextManager& manager,
                                                Stats::Scope& stats_scope)
-    : ssl_ctx_(manager.createSslClientContext(stats_scope, config)) {}
+    : ssl_ctx_(manager.createSslClientContext(stats_scope, config)), config_(config) {}
 
 Network::TransportSocketPtr ClientSslSocketFactory::createTransportSocket() const {
   return std::make_unique<Ssl::SslSocket>(*ssl_ctx_, Ssl::InitialState::Client);
 }
 
 bool ClientSslSocketFactory::implementsSecureTransport() const { return true; }
+
+bool ClientSslSocketFactory::updateSecret(const uint64_t, const Secret::SecretSharedPtr) {
+  // config_.refreshSecret()
+  // return config_.refreshSecret();
+  return false;
+}
 
 ServerSslSocketFactory::ServerSslSocketFactory(const ServerContextConfig& config,
                                                const std::string& listener_name,
@@ -391,13 +397,19 @@ ServerSslSocketFactory::ServerSslSocketFactory(const ServerContextConfig& config
                                                Ssl::ContextManager& manager,
                                                Stats::Scope& stats_scope)
     : ssl_ctx_(manager.createSslServerContext(listener_name, server_names, stats_scope, config,
-                                              skip_context_update)) {}
+                                              skip_context_update)),
+      config_(config) {}
 
 Network::TransportSocketPtr ServerSslSocketFactory::createTransportSocket() const {
   return std::make_unique<Ssl::SslSocket>(*ssl_ctx_, Ssl::InitialState::Server);
 }
 
 bool ServerSslSocketFactory::implementsSecureTransport() const { return true; }
+
+bool ServerSslSocketFactory::updateSecret(const uint64_t, const Secret::SecretSharedPtr) {
+  // return config_.refreshSecret();
+  return true;
+}
 
 } // namespace Ssl
 } // namespace Envoy

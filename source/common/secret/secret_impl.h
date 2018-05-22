@@ -19,9 +19,9 @@ public:
   const std::string& privateKey() override { return private_key_; }
 
 private:
-  std::string name_;
-  std::string certificate_chain_;
-  std::string private_key_;
+  const std::string name_;
+  const std::string certificate_chain_;
+  const std::string private_key_;
 };
 
 } // namespace Secret

@@ -31,6 +31,7 @@ public:
   // Network::TransportSocketFactory
   TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
+  bool updateSecret(const uint64_t, const Secret::SecretSharedPtr) override;
 };
 
 } // namespace Network

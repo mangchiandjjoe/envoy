@@ -1,5 +1,7 @@
 #pragma once
 
+#include <shared_mutex>
+
 #include "envoy/api/v2/listener/listener.pb.h"
 #include "envoy/server/filter_config.h"
 #include "envoy/server/instance.h"
@@ -90,10 +92,29 @@ struct ListenerManagerStats {
   ALL_LISTENER_MANAGER_STATS(GENERATE_COUNTER_STRUCT, GENERATE_GAUGE_STRUCT)
 };
 
+struct PendingListenerInfo {
+  const envoy::api::v2::Listener config;
+  const std::string version_info;
+  const bool modifiable;
+
+  PendingListenerInfo(const envoy::api::v2::Listener& config_, const std::string& version_info_,
+                      bool modifiable_)
+      : config([&config_] {
+          envoy::api::v2::Listener cfg;
+          cfg.CopyFrom(config_);
+          return cfg;
+        }()),
+        version_info(version_info_),
+        modifiable(modifiable_) {
+  }
+};
+
 /**
  * Implementation of ListenerManager.
  */
-class ListenerManagerImpl : public ListenerManager, Logger::Loggable<Logger::Id::config> {
+class ListenerManagerImpl : public ListenerManager,
+                            public Secret::SecretCallbacks,
+                            Logger::Loggable<Logger::Id::config> {
 public:
   ListenerManagerImpl(Instance& server, ListenerComponentFactory& listener_factory,
                       WorkerFactory& worker_factory);
@@ -113,6 +134,8 @@ public:
   void startWorkers(GuardDog& guard_dog) override;
   void stopListeners() override;
   void stopWorkers() override;
+
+  void onAddOrUpdateSecret(const uint64_t hash, const Secret::SecretSharedPtr secret) override;
 
   Instance& server_;
   ListenerComponentFactory& factory_;
@@ -171,6 +194,9 @@ private:
   ListenerManagerStats stats_;
   ConfigTracker::EntryOwnerPtr config_tracker_entry_;
   LdsApiPtr lds_api_;
+
+  mutable std::shared_timed_mutex pending_listeners_mutex_;
+  std::vector<PendingListenerInfo> pending_listeners_;
 };
 
 // TODO(mattklein123): Consider getting rid of pre-worker start and post-worker start code by
@@ -184,6 +210,7 @@ class ListenerImpl : public Network::ListenerConfig,
                      public Network::DrainDecision,
                      public Network::FilterChainFactory,
                      public Configuration::TransportSocketFactoryContext,
+                     public Secret::SecretCallbacks,
                      Logger::Loggable<Logger::Id::config> {
 public:
   /**
@@ -293,9 +320,12 @@ public:
   // Configuration::TransportSocketFactoryContext
   Ssl::ContextManager& sslContextManager() override { return parent_.server_.sslContextManager(); }
   Stats::Scope& statsScope() const override { return *listener_scope_; }
-  Secret::SecretManager& secretManager() override { return secret_manager_; }
+
+  void onAddOrUpdateSecret(const uint64_t hash, const Secret::SecretSharedPtr secret) override;
 
 private:
+  void createTransportSocketFactory(const Secret::SecretSharedPtr secret);
+
   ListenerManagerImpl& parent_;
   Network::Address::InstanceConstSharedPtr address_;
   Network::SocketSharedPtr socket_;

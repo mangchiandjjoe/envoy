@@ -6,6 +6,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -141,17 +142,38 @@ struct ClusterManagerStats {
 };
 
 /**
+ *
+ */
+struct PendingClusterInfo {
+  const envoy::api::v2::Cluster config;
+  const std::string version_info;
+
+  PendingClusterInfo(const envoy::api::v2::Cluster& config_, const std::string& version_info_)
+      : config([&config_] {
+          envoy::api::v2::Cluster cfg;
+          cfg.CopyFrom(config_);
+          return cfg;
+        }()),
+        version_info(version_info_) {
+  }
+
+};
+
+/**
  * Implementation of ClusterManager that reads from a proto configuration, maintains a central
  * cluster list, as well as thread local caches of each cluster and associated connection pools.
  */
-class ClusterManagerImpl : public ClusterManager, Logger::Loggable<Logger::Id::upstream> {
+class ClusterManagerImpl : public ClusterManager,
+                           public Secret::SecretCallbacks,
+                           Logger::Loggable<Logger::Id::upstream> {
 public:
   ClusterManagerImpl(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,
                      ClusterManagerFactory& factory, Stats::Store& stats,
                      ThreadLocal::Instance& tls, Runtime::Loader& runtime,
                      Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
                      AccessLog::AccessLogManager& log_manager,
-                     Event::Dispatcher& main_thread_dispatcher, Server::Admin& admin);
+                     Event::Dispatcher& main_thread_dispatcher, Server::Admin& admin,
+                     Secret::SecretManager& secret_manager);
 
   // Upstream::ClusterManager
   bool addOrUpdateCluster(const envoy::api::v2::Cluster& cluster,
@@ -192,6 +214,7 @@ public:
 
   ClusterUpdateCallbacksHandlePtr
   addThreadLocalClusterUpdateCallbacks(ClusterUpdateCallbacks&) override;
+  void onAddOrUpdateSecret(const uint64_t, const Secret::SecretSharedPtr) override;
 
 private:
   /**
@@ -341,6 +364,7 @@ private:
   void postThreadLocalHealthFailure(const HostSharedPtr& host);
   void updateGauges();
 
+
   ClusterManagerFactory& factory_;
   Runtime::Loader& runtime_;
   Stats::Store& stats_;
@@ -361,6 +385,9 @@ private:
   std::string local_cluster_name_;
   Grpc::AsyncClientManagerPtr async_client_manager_;
   Server::ConfigTracker::EntryOwnerPtr config_tracker_entry_;
+
+  mutable std::shared_timed_mutex pending_clusters_mutex_;
+  std::vector<PendingClusterInfo> pending_clusters_;
 };
 
 } // namespace Upstream

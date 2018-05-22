@@ -1,5 +1,7 @@
 #include "server/listener_manager_impl.h"
 
+#include <iterator>
+
 #include "envoy/admin/v2alpha/config_dump.pb.h"
 #include "envoy/registry/registry.h"
 #include "envoy/server/transport_socket_config.h"
@@ -169,13 +171,13 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, const std::st
   // Skip lookup and update of the SSL Context if there is only one filter chain
   // and it doesn't enforce any SNI restrictions.
   const bool skip_context_update =
-      (config.filter_chains().size() == 1 &&
-       config.filter_chains()[0].filter_chain_match().sni_domains().empty());
+      (config_.filter_chains().size() == 1 &&
+          config_.filter_chains()[0].filter_chain_match().sni_domains().empty());
 
   absl::optional<uint64_t> filters_hash;
   uint32_t has_tls = 0;
   uint32_t has_stk = 0;
-  for (const auto& filter_chain : config.filter_chains()) {
+  for (const auto& filter_chain : config_.filter_chains()) {
     std::vector<std::string> sni_domains(filter_chain.filter_chain_match().sni_domains().begin(),
                                          filter_chain.filter_chain_match().sni_domains().end());
     if (!filters_hash) {
@@ -188,9 +190,9 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, const std::st
                                        address_->asString()));
     }
 
-    // If the cluster doesn't have transport socke configured, override with default transport
+    // If the cluster doesn't have transport socket configured, override with default transport
     // socket implementation based on tls_context. We copy by value first then override if
-    // neccessary.
+    // necessary.
     auto transport_socket = filter_chain.transport_socket();
     if (!filter_chain.has_transport_socket()) {
       if (filter_chain.has_tls_context()) {
@@ -234,6 +236,8 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, const std::st
                                      "Session Ticket Keys are currently not supported",
                                      address_->asString()));
   }
+
+  ASSERT(!transport_socket_factories_.empty());
 }
 
 ListenerImpl::~ListenerImpl() {
@@ -245,6 +249,13 @@ ListenerImpl::~ListenerImpl() {
   initialize_canceled_ = true;
   filter_factories_.clear();
 }
+
+void ListenerImpl::createTransportSocketFactory(const Secret::SecretSharedPtr ) {
+  transport_socket_factories_.clear();
+
+
+}
+
 
 bool ListenerImpl::createNetworkFilterChain(Network::Connection& connection) {
   return Configuration::FilterChainUtility::buildFilterChain(connection, filter_factories_);
@@ -311,12 +322,18 @@ void ListenerImpl::setSocket(const Network::SocketSharedPtr& socket) {
   }
 }
 
+void ListenerImpl::onAddOrUpdateSecret(const uint64_t, const Secret::SecretSharedPtr) {
+  //
+}
+
 ListenerManagerImpl::ListenerManagerImpl(Instance& server,
                                          ListenerComponentFactory& listener_factory,
                                          WorkerFactory& worker_factory)
     : server_(server), factory_(listener_factory), stats_(generateStats(server.stats())),
       config_tracker_entry_(server.admin().getConfigTracker().add(
           "listeners", [this] { return dumpListenerConfigs(); })) {
+  server.secretManager().registerSecretCallback(*this);
+
   for (uint32_t i = 0; i < std::max(1U, server.options().concurrency()); i++) {
     workers_.emplace_back(worker_factory.createWorker());
   }
@@ -350,6 +367,32 @@ ProtobufTypes::MessagePtr ListenerManagerImpl::dumpListenerConfigs() {
   return config_dump;
 }
 
+void ListenerManagerImpl::onAddOrUpdateSecret(const uint64_t,
+                                              const Secret::SecretSharedPtr) {
+  std::vector<PendingListenerInfo> listeners;
+
+  {
+    std::unique_lock<std::shared_timed_mutex> lhs(pending_listeners_mutex_);
+    if(pending_listeners_.empty()) {
+      return;
+    }
+
+    copy(pending_listeners_.begin(), pending_listeners_.end(), back_inserter(listeners));
+    pending_listeners_.clear();
+  }
+
+  ENVOY_LOG(info, "creating pending listeners: {}", listeners.size());
+
+  for (const auto& listener : listeners) {
+    try {
+      addOrUpdateListener(listener.config, listener.version_info, listener.modifiable);
+      ENVOY_LOG(debug, "created pending cluster: '{}'", MessageUtil::hash(listener.config));
+    } catch (const EnvoyResourceDependencyException& e) {
+      ENVOY_LOG(info, "dependent resource is still not ready: '{}'", e.what());
+    }
+  }
+}
+
 ListenerManagerStats ListenerManagerImpl::generateStats(Stats::Scope& scope) {
   const std::string final_prefix = "listener_manager.";
   return {ALL_LISTENER_MANAGER_STATS(POOL_COUNTER_PREFIX(scope, final_prefix),
@@ -366,6 +409,7 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
   }
   const uint64_t hash = MessageUtil::hash(config);
   ENVOY_LOG(debug, "begin add/update listener: name={} hash={}", name, hash);
+  ENVOY_LOG(info, "begin add/update listener: name={} hash={}", name, hash);
 
   auto existing_active_listener = getListenerByName(active_listeners_, name);
   auto existing_warming_listener = getListenerByName(warming_listeners_, name);
@@ -380,8 +424,24 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
     return false;
   }
 
-  ListenerImplPtr new_listener(new ListenerImpl(config, version_info, *this, name, modifiable,
-                                                workers_started_, hash, server_.secretManager()));
+  ListenerImplPtr new_listener;
+
+  try {
+    new_listener =
+      ListenerImplPtr(new ListenerImpl(config, version_info, *this, name, modifiable,
+                                       workers_started_, hash, server_.secretManager()));
+  } catch(const EnvoyResourceDependencyException& e) {
+    ENVOY_LOG(
+        info,
+        "required resources are not ready yet. added listener to pending creation list: {} {}",
+        name, e.what());
+    {
+      std::unique_lock<std::shared_timed_mutex> lhs(pending_listeners_mutex_);
+      pending_listeners_.push_back({config, version_info, modifiable});
+    }
+    throw e;
+  }
+
   ListenerImpl& new_listener_ref = *new_listener;
 
   // We mandate that a listener with the same name must have the same configured address. This
@@ -410,6 +470,7 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
     // In this case we have no warming listener, so what we do depends on whether workers
     // have been started or not. Either way we get the socket from the existing listener.
     new_listener->setSocket((*existing_active_listener)->getSocket());
+
     if (workers_started_) {
       new_listener->debugLog("add warming listener");
       warming_listeners_.emplace_back(std::move(new_listener));

@@ -171,13 +171,17 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
                                        const LocalInfo::LocalInfo& local_info,
                                        AccessLog::AccessLogManager& log_manager,
                                        Event::Dispatcher& main_thread_dispatcher,
-                                       Server::Admin& admin)
+                                       Server::Admin& admin,
+                                       Secret::SecretManager& secret_manager)
     : factory_(factory), runtime_(runtime), stats_(stats), tls_(tls.allocateSlot()),
       random_(random), bind_config_(bootstrap.cluster_manager().upstream_bind_config()),
       local_info_(local_info), cm_stats_(generateStats(stats)),
       init_helper_([this](Cluster& cluster) { onClusterInit(cluster); }),
       config_tracker_entry_(
           admin.getConfigTracker().add("clusters", [this] { return dumpClusterConfigs(); })) {
+
+  secret_manager.registerSecretCallback(*this);
+
   async_client_manager_ = std::make_unique<Grpc::AsyncClientManagerImpl>(*this, tls);
   const auto& cm_config = bootstrap.cluster_manager();
   if (cm_config.has_outlier_detection()) {
@@ -201,7 +205,11 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
   for (const auto& cluster : bootstrap.static_resources().clusters()) {
     // First load all the primary clusters.
     if (cluster.type() != envoy::api::v2::Cluster::EDS) {
-      loadCluster(cluster, "", false, active_clusters_);
+      try {
+        loadCluster(cluster, "", false, active_clusters_);
+      } catch (const EnvoyResourceDependencyException& e) {
+        ENVOY_LOG(info, "dependent resource is still not ready: '{}'", e.what());
+      }
     }
   }
 
@@ -223,7 +231,11 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
   for (const auto& cluster : bootstrap.static_resources().clusters()) {
     // Now load all the secondary clusters.
     if (cluster.type() == envoy::api::v2::Cluster::EDS) {
-      loadCluster(cluster, "", false, active_clusters_);
+      try {
+        loadCluster(cluster, "", false, active_clusters_);
+      } catch (const EnvoyResourceDependencyException& e) {
+        ENVOY_LOG(info, "dependent resource is still not ready: '{}'", e.what());
+      }
     }
   }
 
@@ -470,11 +482,52 @@ bool ClusterManagerImpl::removeCluster(const std::string& cluster_name) {
   return removed;
 }
 
+
+void ClusterManagerImpl::onAddOrUpdateSecret(const uint64_t,
+                                              const Secret::SecretSharedPtr) {
+  std::vector<PendingClusterInfo> clusters;
+
+  {
+    std::unique_lock<std::shared_timed_mutex> lhs(pending_clusters_mutex_);
+    if(pending_clusters_.empty()) {
+      return;
+    }
+
+    copy(pending_clusters_.begin(), pending_clusters_.end(), back_inserter(clusters));
+    pending_clusters_.clear();
+  }
+
+  ENVOY_LOG(info, "creating pending clusters: {}", clusters.size());
+
+  for (const auto& cluster : clusters) {
+    try {
+      addOrUpdateCluster(cluster.config, cluster.version_info);
+      ENVOY_LOG(debug, "created pending cluster: '{}'", cluster.config.name());
+    } catch (const EnvoyResourceDependencyException& e) {
+      ENVOY_LOG(info, "dependent resource is still not ready: '{}'", e.what());
+    }
+  }
+}
+
 void ClusterManagerImpl::loadCluster(const envoy::api::v2::Cluster& cluster,
                                      const std::string& version_info, bool added_via_api,
                                      ClusterMap& cluster_map) {
-  ClusterSharedPtr new_cluster =
-      factory_.clusterFromProto(cluster, *this, outlier_event_logger_, added_via_api);
+  ClusterSharedPtr new_cluster;
+
+  try {
+    new_cluster = ClusterSharedPtr(
+        factory_.clusterFromProto(cluster, *this, outlier_event_logger_, added_via_api));
+  } catch (const EnvoyResourceDependencyException& e) {
+    ENVOY_LOG(
+        info,
+        "required resources are not ready yet. added cluster to pending creation list: {} {}",
+        cluster.name(), e.what());
+    {
+      std::unique_lock<std::shared_timed_mutex> lhs(pending_clusters_mutex_);
+      pending_clusters_.push_back({cluster, version_info});
+    }
+    throw e;
+  }
 
   if (!added_via_api) {
     if (cluster_map.find(new_cluster->info()->name()) != cluster_map.end()) {
@@ -941,7 +994,7 @@ ClusterManagerPtr ProdClusterManagerFactory::clusterManagerFromProto(
     Server::Admin& admin) {
   return ClusterManagerPtr{new ClusterManagerImpl(bootstrap, *this, stats, tls, runtime, random,
                                                   local_info, log_manager, main_thread_dispatcher_,
-                                                  admin)};
+                                                  admin, ssl_context_manager_.secretManager())};
 }
 
 Http::ConnectionPool::InstancePtr ProdClusterManagerFactory::allocateConnPool(

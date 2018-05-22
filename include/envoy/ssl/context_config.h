@@ -102,6 +102,12 @@ public:
    * @return The maximum TLS protocol version to negotiate.
    */
   virtual unsigned maxProtocolVersion() const PURE;
+
+  /**
+   * Refresh secret. Specially dynamic secret read from the secret manager
+   * @return true when successful. otherwise return false
+   */
+  virtual bool refreshSecret() PURE;
 };
 
 class ClientContextConfig : public virtual ContextConfig {

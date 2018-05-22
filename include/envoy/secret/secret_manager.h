@@ -7,11 +7,24 @@
 #include <string>
 
 #include "envoy/secret/secret.h"
+#include "envoy/api/v2/core/config_source.pb.h"
 
 #include "common/json/json_loader.h"
 
 namespace Envoy {
 namespace Secret {
+
+
+/**
+ * Callbacks invoked by a secret manager.
+ */
+class SecretCallbacks {
+public:
+  virtual ~SecretCallbacks() {}
+
+  virtual void onAddOrUpdateSecret(const uint64_t hash, const SecretSharedPtr secret) PURE;
+};
+
 
 /**
  * A manager for all static secrets
@@ -32,7 +45,48 @@ public:
    * @return the static secret for the given name
    */
   virtual SecretSharedPtr getStaticSecret(const std::string& name) PURE;
+
+  /**
+   *
+   */
+  virtual uint64_t addOrUpdateSdsConfigSource(const envoy::api::v2::core::ConfigSource& config_source) PURE;
+
+  /**
+   * Add or update dynamic secret
+   *
+   * @param hash Hash code of ConfigSource
+   * @param secret new or updated SecretPtr
+   * @return true when successful, otherwise returns false
+   */
+  virtual bool addOrUpdateDynamicSecret(const uint64_t hash, const SecretSharedPtr secret) PURE;
+
+  /**
+   * @return the dynamic secret for the given ConfigSource and secret name
+   */
+  virtual SecretSharedPtr getDynamicSecret(const uint64_t hash, const std::string& name) PURE;
+
+
+  virtual void registerSecretCallback(SecretCallbacks& callback) PURE;
+
+  /**
+   * Calculate hash code of ConfigSource. To identify the same ConfigSource, calculate the hash
+   * code from the ConfigSource
+   *
+   * @param  config_source envoy::api::v2::core::ConfigSource
+   * @return hash code
+   */
+  static uint64_t configSourceHash(const envoy::api::v2::core::ConfigSource& config_source) {
+    std::string jsonstr;
+    if (google::protobuf::util::MessageToJsonString(config_source, &jsonstr).ok()) {
+      auto obj = Json::Factory::loadFromString(jsonstr);
+      if (obj.get() != nullptr) {
+        return obj->hash();
+      }
+    }
+    throw EnvoyException("invalid ConfigSource message");
+  }
 };
+
 
 } // namespace Secret
 } // namespace Envoy

@@ -109,6 +109,10 @@ bool CaptureSocketFactory::implementsSecureTransport() const {
   return transport_socket_factory_->implementsSecureTransport();
 }
 
+bool CaptureSocketFactory::updateSecret(const uint64_t, const Secret::SecretSharedPtr) {
+  return false;
+}
+
 } // namespace Capture
 } // namespace TransportSockets
 } // namespace Extensions

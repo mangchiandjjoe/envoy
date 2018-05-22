@@ -33,11 +33,11 @@ public:
                ? INLINE_STRING
                : certificate_revocation_list_path_;
   }
-  const std::string& certChain() const override { return cert_chain_; }
+  const std::string& certChain() const override;
   const std::string& certChainPath() const override {
     return (cert_chain_path_.empty() && !cert_chain_.empty()) ? INLINE_STRING : cert_chain_path_;
   }
-  const std::string& privateKey() const override { return private_key_; }
+  const std::string& privateKey() const override;
   const std::string& privateKeyPath() const override {
     return (private_key_path_.empty() && !private_key_.empty()) ? INLINE_STRING : private_key_path_;
   }
@@ -47,6 +47,7 @@ public:
   const std::string& verifyCertificateHash() const override { return verify_certificate_hash_; };
   unsigned minProtocolVersion() const override { return min_protocol_version_; };
   unsigned maxProtocolVersion() const override { return max_protocol_version_; };
+  bool refreshSecret() override;
 
 protected:
   ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config,
@@ -59,6 +60,10 @@ private:
 
   static const std::string DEFAULT_CIPHER_SUITES;
   static const std::string DEFAULT_ECDH_CURVES;
+
+  Secret::SecretManager& secret_manager_;
+  const std::string sds_dynamic_secret_name_;
+  const uint64_t sds_config_source_hash_;
 
   const std::string alpn_protocols_;
   const std::string alt_alpn_protocols_;
@@ -88,6 +93,8 @@ public:
   // Ssl::ClientContextConfig
   const std::string& serverNameIndication() const override { return server_name_indication_; }
 
+  bool refreshSecret() override { return ContextConfigImpl::refreshSecret(); }
+
 private:
   const std::string server_name_indication_;
 };
@@ -104,6 +111,8 @@ public:
   const std::vector<SessionTicketKey>& sessionTicketKeys() const override {
     return session_ticket_keys_;
   }
+
+  bool refreshSecret() override { return ContextConfigImpl::refreshSecret(); }
 
 private:
   const bool require_client_certificate_;

@@ -30,7 +30,21 @@ const std::string ContextConfigImpl::DEFAULT_ECDH_CURVES = "X25519:P-256";
 
 ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config,
                                      Secret::SecretManager& secret_manager)
-    : alpn_protocols_(RepeatedPtrUtil::join(config.alpn_protocols(), ",")),
+    : secret_manager_(secret_manager),
+      sds_dynamic_secret_name_([&config, &secret_manager] {
+        return (!config.tls_certificate_sds_secret_configs().empty() &&
+                config.tls_certificate_sds_secret_configs()[0].has_sds_config())
+                   ? config.tls_certificate_sds_secret_configs()[0].name()
+                   : "";
+      }()),
+      sds_config_source_hash_([&config, &secret_manager] {
+        return (!config.tls_certificate_sds_secret_configs().empty() &&
+                config.tls_certificate_sds_secret_configs()[0].has_sds_config())
+                   ? secret_manager.addOrUpdateSdsConfigSource(
+                         config.tls_certificate_sds_secret_configs()[0].sds_config())
+                   : 0;
+      }()),
+      alpn_protocols_(RepeatedPtrUtil::join(config.alpn_protocols(), ",")),
       alt_alpn_protocols_(config.deprecated_v1().alt_alpn_protocols()),
       cipher_suites_(StringUtil::nonEmptyStringOrDefault(
           RepeatedPtrUtil::join(config.tls_params().cipher_suites(), ":"), DEFAULT_CIPHER_SUITES)),
@@ -42,42 +56,56 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           Config::DataSource::read(config.validation_context().crl(), true)),
       certificate_revocation_list_path_(
           Config::DataSource::getPath(config.validation_context().crl())),
-      cert_chain_([&config, &secret_manager] {
+      cert_chain_([&config, &secret_manager, this] {
         if (!config.tls_certificates().empty()) {
           return Config::DataSource::read(config.tls_certificates()[0].certificate_chain(), true);
         } else if (!config.tls_certificate_sds_secret_configs().empty()) {
-          auto static_secret =
-              secret_manager.getStaticSecret(config.tls_certificate_sds_secret_configs()[0].name());
-          if (static_secret == nullptr) {
-            throw EnvoyException(
-                fmt::format("Static secret is not defined: {}",
-                            config.tls_certificate_sds_secret_configs()[0].name()));
+          if (config.tls_certificate_sds_secret_configs()[0].has_sds_config()) {
+            if (secret_manager.getDynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_) == nullptr) {
+              throw EnvoyResourceDependencyException(
+                  fmt::format("Dynamic secret is not ready yet: {}",
+                              config.tls_certificate_sds_secret_configs()[0].name()));
+            }
+          } else {
+            auto secret =
+                secret_manager.getStaticSecret(config.tls_certificate_sds_secret_configs()[0].name());
+            if (secret == nullptr) {
+              throw EnvoyResourceDependencyException(
+                  fmt::format("Static secret is not ready yet: {}",
+                              config.tls_certificate_sds_secret_configs()[0].name()));
+            }
+            return secret->certificateChain();
           }
-          return static_secret->certificateChain();
-        } else {
-          return std::string("");
         }
+        return std::string("");
       }()),
       cert_chain_path_(
           config.tls_certificates().empty()
               ? ""
               : Config::DataSource::getPath(config.tls_certificates()[0].certificate_chain())),
-      private_key_([&config, &secret_manager] {
+      private_key_([&config, &secret_manager, this] {
         if (!config.tls_certificates().empty()) {
           return Config::DataSource::read(config.tls_certificates()[0].private_key(), true);
         } else if (!config.tls_certificate_sds_secret_configs().empty()) {
-          // static SDS secret
-          auto static_secret =
+          if (config.tls_certificate_sds_secret_configs()[0].has_sds_config()) {
+            if (secret_manager.getDynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_) == nullptr) {
+              throw EnvoyResourceDependencyException(
+                  fmt::format("Dynamic secret is not ready yet: {}",
+                              config.tls_certificate_sds_secret_configs()[0].name()));
+            }
+            return std::string("");
+          }
+
+          auto secret =
               secret_manager.getStaticSecret(config.tls_certificate_sds_secret_configs()[0].name());
-          if (static_secret == nullptr) {
-            throw EnvoyException(
-                fmt::format("Static secret is not defined: {}",
+          if (secret == nullptr) {
+            throw EnvoyResourceDependencyException(
+                fmt::format("Static secret is not ready yet: {}",
                             config.tls_certificate_sds_secret_configs()[0].name()));
           }
-          return static_secret->privateKey();
-        } else {
-          return std::string("");
+          return secret->privateKey();
         }
+        return std::string("");
       }()),
       private_key_path_(
           config.tls_certificates().empty()
@@ -92,7 +120,6 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           tlsVersionFromProto(config.tls_params().tls_minimum_protocol_version(), TLS1_VERSION)),
       max_protocol_version_(
           tlsVersionFromProto(config.tls_params().tls_maximum_protocol_version(), TLS1_2_VERSION)) {
-
   // TODO(htuch): Support multiple hashes.
   if (config.validation_context().verify_certificate_hash().size() > 1) {
     throw EnvoyException("Multiple TLS certificate verification hashes are not supported");
@@ -121,6 +148,34 @@ unsigned ContextConfigImpl::tlsVersionFromProto(
   }
 
   NOT_REACHED;
+}
+
+bool ContextConfigImpl::refreshSecret() {
+  if (!sds_dynamic_secret_name_.empty()) {
+    auto secret =
+        secret_manager_.getDynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_);
+    if (secret) {
+      // cert_chain_ = secret->certificateChain();
+      // private_key_ = secret->privateKey();
+    }
+  }
+  return true;
+}
+
+const std::string& ContextConfigImpl::certChain() const {
+  if (!cert_chain_.empty()) {
+    return cert_chain_;
+  }
+  auto secret = secret_manager_.getDynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_);
+  return (secret) ? secret->certificateChain() : cert_chain_;
+}
+
+const std::string& ContextConfigImpl::privateKey() const {
+  if (!private_key_.empty()) {
+    return private_key_;
+  }
+  auto secret = secret_manager_.getDynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_);
+  return (secret) ? secret->privateKey() : private_key_;
 }
 
 ClientContextConfigImpl::ClientContextConfigImpl(

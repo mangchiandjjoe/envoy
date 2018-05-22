@@ -92,5 +92,10 @@ TransportSocketPtr RawBufferSocketFactory::createTransportSocket() const {
 }
 
 bool RawBufferSocketFactory::implementsSecureTransport() const { return false; }
+
+bool RawBufferSocketFactory::updateSecret(const uint64_t, const Secret::SecretSharedPtr) {
+  return false;
+}
+
 } // namespace Network
 } // namespace Envoy

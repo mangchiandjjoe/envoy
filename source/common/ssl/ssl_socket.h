@@ -69,9 +69,11 @@ public:
                          Stats::Scope& stats_scope);
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
+  bool updateSecret(const uint64_t, const Secret::SecretSharedPtr) override;
 
 private:
   const ClientContextPtr ssl_ctx_;
+  const ClientContextConfig& config_;
 };
 
 class ServerSslSocketFactory : public Network::TransportSocketFactory {
@@ -81,9 +83,11 @@ public:
                          Ssl::ContextManager& manager, Stats::Scope& stats_scope);
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
+  bool updateSecret(const uint64_t, const Secret::SecretSharedPtr) override;
 
 private:
   const ServerContextPtr ssl_ctx_;
+  const ServerContextConfig& config_;
 };
 
 } // namespace Ssl

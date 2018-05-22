@@ -19,6 +19,6 @@ envoy_cc_library(
     deps = [
         ":secret_interface",
         "//source/common/json:json_loader_lib",
-        "@envoy_api//envoy/api/v2/auth:cert_cc",
+        "@envoy_api//envoy/api/v2/core:config_source_cc",
     ],
 )

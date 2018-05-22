@@ -63,6 +63,8 @@ void LdsApiImpl::onConfigUpdate(const ResourceVector& resources, const std::stri
       } else {
         ENVOY_LOG(debug, "lds: add/update listener '{}' skipped", listener_name);
       }
+    } catch (const EnvoyResourceDependencyException& e) {
+      ENVOY_LOG(info, "dependent resource is not ready: '{}'", e.what());
     } catch (const EnvoyException& e) {
       throw EnvoyException(
           fmt::format("Error adding/updating listener {}: {}", listener_name, e.what()));

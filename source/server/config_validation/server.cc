@@ -81,7 +81,7 @@ void ValidationInstance::initialize(Options& options,
   ssl_context_manager_.reset(new Ssl::ContextManagerImpl(*runtime_loader_, *secret_manager_));
   cluster_manager_factory_.reset(new Upstream::ValidationClusterManagerFactory(
       runtime(), stats(), threadLocal(), random(), dnsResolver(), sslContextManager(), dispatcher(),
-      localInfo()));
+      localInfo(), *secret_manager_.get()));
 
   Configuration::MainImpl* main_config = new Configuration::MainImpl();
   config_.reset(main_config);

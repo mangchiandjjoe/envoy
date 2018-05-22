@@ -62,7 +62,13 @@ void MainImpl::initialize(const envoy::config::bootstrap::v2::Bootstrap& bootstr
   ENVOY_LOG(info, "loading {} listener(s)", listeners.size());
   for (ssize_t i = 0; i < listeners.size(); i++) {
     ENVOY_LOG(debug, "listener #{}:", i);
-    server.listenerManager().addOrUpdateListener(listeners[i], "", false);
+
+    try {
+      server.listenerManager().addOrUpdateListener(listeners[i], "", false);
+    } catch (const EnvoyResourceDependencyException& e) {
+      ENVOY_LOG(debug, "dependent resource is not ready: '{}'", e.what());
+    }
+
   }
 
   stats_flush_interval_ =

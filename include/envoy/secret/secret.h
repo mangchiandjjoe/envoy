@@ -5,8 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "envoy/common/exception.h"
-#include "envoy/ssl/context.h"
+#include "envoy/common/pure.h"
 
 namespace Envoy {
 namespace Secret {
@@ -27,6 +26,7 @@ public:
    * @return a string of certificate chain
    */
   virtual const std::string& certificateChain() PURE;
+
   /**
    * @return a string of private key
    */
