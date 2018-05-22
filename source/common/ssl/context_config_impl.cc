@@ -70,7 +70,7 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
             const auto secret =
                 secret_manager.staticSecret(config.tls_certificate_sds_secret_configs()[0].name());
             if (secret == nullptr) {
-              throw EnvoyResourceDependencyException(
+              throw EnvoyException(
                   fmt::format("Static secret is not ready yet: {}",
                               config.tls_certificate_sds_secret_configs()[0].name()));
             }
@@ -100,7 +100,7 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           const auto secret =
               secret_manager.staticSecret(config.tls_certificate_sds_secret_configs()[0].name());
           if (secret == nullptr) {
-            throw EnvoyResourceDependencyException(
+            throw EnvoyException(
                 fmt::format("Static secret is not ready yet: {}",
                             config.tls_certificate_sds_secret_configs()[0].name()));
           }

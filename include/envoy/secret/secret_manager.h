@@ -87,6 +87,5 @@ public:
   }
 };
 
-
 } // namespace Secret
 } // namespace Envoy
