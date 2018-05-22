@@ -87,7 +87,6 @@ public:
 
 private:
   const ServerContextPtr ssl_ctx_;
-  const ServerContextConfig& config_;
 };
 
 } // namespace Ssl

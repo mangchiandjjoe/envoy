@@ -239,8 +239,6 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, const std::st
           factory.createFilterFactoryFromProto(Envoy::ProtobufWkt::Empty(), *this));
     }
   }
-
-  ASSERT(!transport_socket_factories_.empty());
 }
 
 ListenerImpl::~ListenerImpl() {
@@ -475,16 +473,23 @@ ProtobufTypes::MessagePtr ListenerManagerImpl::dumpListenerConfigs() {
   return config_dump;
 }
 
+/*
 void ListenerManagerImpl::onAddOrUpdateSecret(const uint64_t hash,
                                               const Secret::SecretSharedPtr secret) {
+*/
+void ListenerManagerImpl::onAddOrUpdateSecret(const uint64_t, const Secret::SecretSharedPtr) {
+  /*
+
   // refresh listeners
   for (auto& active_listener : active_listeners_) {
-    active_listener->transportSocketFactory().updateSecret(hash, secret);
+    // active_listener->transportSocketFactory().updateSecret(hash, secret);
   }
 
   for (auto& warming_listener : warming_listeners_) {
-    warming_listener->transportSocketFactory().updateSecret(hash, secret);
+    // warming_listener->transportSocketFactory().updateSecret(hash, secret);
   }
+
+  */
 
   // create listeners in the pending creating list
   std::vector<PendingListenerInfo> listeners;
