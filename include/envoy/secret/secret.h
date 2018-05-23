@@ -1,34 +1,32 @@
 #pragma once
 
-#include <stdexcept>
+#include <memory>
 #include <string>
-#include <unordered_map>
-#include <vector>
 
-#include "envoy/common/exception.h"
-#include "envoy/ssl/context.h"
+#include "envoy/common/pure.h"
 
 namespace Envoy {
 namespace Secret {
 
 /**
- * Secret contains certificate chain and private key
+ * Secret contains certificate chain and private key.
  */
 class Secret {
 public:
   virtual ~Secret() {}
 
   /**
-   * @return a name of the SDS secret
+   * @return a name of the SDS secret.
    */
   virtual const std::string& name() const PURE;
 
   /**
-   * @return a string of certificate chain
+   * @return a string of certificate chain.
    */
   virtual const std::string& certificateChain() const PURE;
+
   /**
-   * @return a string of private key
+   * @return a string of private key.
    */
   virtual const std::string& privateKey() const PURE;
 };

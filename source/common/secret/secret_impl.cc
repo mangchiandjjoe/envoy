@@ -1,8 +1,5 @@
 #include "common/secret/secret_impl.h"
 
-#include <string>
-
-#include "common/common/assert.h"
 #include "common/config/datasource.h"
 
 namespace Envoy {

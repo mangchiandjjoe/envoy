@@ -1,14 +1,10 @@
 #include "common/secret/secret_manager_impl.h"
 
-#include "common/common/logger.h"
-#include "common/secret/secret_impl.h"
-
 namespace Envoy {
 namespace Secret {
 
-bool SecretManagerImpl::addOrUpdateStaticSecret(const SecretSharedPtr secret) {
+void SecretManagerImpl::addOrUpdateStaticSecret(const SecretSharedPtr secret) {
   static_secrets_[secret->name()] = secret;
-  return true;
 }
 
 const SecretSharedPtr SecretManagerImpl::staticSecret(const std::string& name) const {

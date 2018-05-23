@@ -41,7 +41,7 @@ public:
   virtual void iterateContexts(std::function<void(const Context&)> callback) PURE;
 
   /**
-   * Return the secret manager
+   * Return the instance of secret manager.
    */
   virtual Secret::SecretManager& secretManager() PURE;
 };

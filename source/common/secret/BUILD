@@ -26,6 +26,5 @@ envoy_cc_library(
     deps = [
         ":secret_impl_lib",
         "//include/envoy/secret:secret_manager_interface",
-        "//include/envoy/server:instance_interface",
     ],
 )
