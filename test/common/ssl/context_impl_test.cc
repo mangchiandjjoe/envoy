@@ -364,9 +364,9 @@ TEST(ClientContextConfigImplTest, InvalidCertificateHash) {
       // This is valid hex-encoded string, but it doesn't represent SHA-256 (80 vs 64 chars).
       ->add_verify_certificate_hash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                                     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-  ClientContextConfigImpl client_context_config(tls_context);
+  ClientContextConfigImpl client_context_config(tls_context, secret_manager);
   Runtime::MockLoader runtime;
-  ContextManagerImpl manager(runtime);
+  ContextManagerImpl manager(runtime, secret_manager);
   Stats::IsolatedStoreImpl store;
   EXPECT_THROW_WITH_REGEX(manager.createSslClientContext(store, client_context_config),
                           EnvoyException, "Invalid hex-encoded SHA-256 .*");
