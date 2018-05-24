@@ -93,9 +93,11 @@ TransportSocketPtr RawBufferSocketFactory::createTransportSocket() const {
 
 bool RawBufferSocketFactory::implementsSecureTransport() const { return false; }
 
-bool RawBufferSocketFactory::updateSecret(const uint64_t, const Secret::SecretSharedPtr) {
-  return false;
+// TODO (jaebong)
+void RawBufferSocketFactory::onAddOrUpdateSecret() {
+
 }
+
 
 } // namespace Network
 } // namespace Envoy

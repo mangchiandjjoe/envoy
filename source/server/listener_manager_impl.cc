@@ -438,7 +438,7 @@ ListenerManagerImpl::ListenerManagerImpl(Instance& server,
     : server_(server), factory_(listener_factory), stats_(generateStats(server.stats())),
       config_tracker_entry_(server.admin().getConfigTracker().add(
           "listeners", [this] { return dumpListenerConfigs(); })) {
-  server.secretManager().registerSecretCallback(*this);
+  server.secretManager().registerSecretInitializeCallback(*this);
 
   for (uint32_t i = 0; i < std::max(1U, server.options().concurrency()); i++) {
     workers_.emplace_back(worker_factory.createWorker());
@@ -473,24 +473,7 @@ ProtobufTypes::MessagePtr ListenerManagerImpl::dumpListenerConfigs() {
   return config_dump;
 }
 
-/*
-void ListenerManagerImpl::onAddOrUpdateSecret(const uint64_t hash,
-                                              const Secret::SecretSharedPtr secret) {
-*/
-void ListenerManagerImpl::onAddOrUpdateSecret(const uint64_t, const Secret::SecretSharedPtr) {
-  /*
-
-  // refresh listeners
-  for (auto& active_listener : active_listeners_) {
-    // active_listener->transportSocketFactory().updateSecret(hash, secret);
-  }
-
-  for (auto& warming_listener : warming_listeners_) {
-    // warming_listener->transportSocketFactory().updateSecret(hash, secret);
-  }
-
-  */
-
+void ListenerManagerImpl::onAddOrUpdateSecret() {
   // create listeners in the pending creating list
   std::vector<PendingListenerInfo> listeners;
 
@@ -553,6 +536,15 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
     new_listener =
         ListenerImplPtr(new ListenerImpl(config, version_info, *this, name, modifiable,
                                          workers_started_, hash, server_.secretManager()));
+  } catch (const EnvoyClusterDependencyException& ee) {
+    if (server_.secretManager().isPendingClusterName(ee.cluster_name)) {
+      std::unique_lock<std::shared_timed_mutex> lhs(pending_listeners_mutex_);
+      pending_listeners_.push_back({config, version_info, modifiable});
+      throw EnvoyResourceDependencyException(
+          fmt::format("still waiting for the cluster initialization: {}", ee.cluster_name));
+    } else {
+      throw EnvoyException(ee.what());
+    }
   } catch (const EnvoyResourceDependencyException& e) {
     ENVOY_LOG(
         info,

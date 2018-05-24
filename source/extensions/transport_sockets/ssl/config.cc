@@ -16,12 +16,26 @@ namespace SslTransport {
 Network::TransportSocketFactoryPtr UpstreamSslSocketFactory::createTransportSocketFactory(
     const Protobuf::Message& message,
     Server::Configuration::TransportSocketFactoryContext& context) {
-  return std::make_unique<Ssl::ClientSslSocketFactory>(
-      Ssl::ClientContextConfigImpl(
+
+  std::unique_ptr<Ssl::ClientContextConfigImpl> upstream_config(
+      new Ssl::ClientContextConfigImpl(
           MessageUtil::downcastAndValidate<const envoy::api::v2::auth::UpstreamTlsContext&>(
               message),
-          context.sslContextManager().secretManager()),
-      context.sslContextManager(), context.statsScope());
+          context.sslContextManager().secretManager()));
+
+  auto hash = upstream_config->sdsConfigShourceHash();
+  auto name = upstream_config->sdsSecretName();
+
+  Network::TransportSocketFactoryPtr tsf = std::make_unique<Ssl::ClientSslSocketFactory>(
+      std::move(upstream_config),
+       context.sslContextManager(), context.statsScope());
+
+  if(!name.empty()) {
+    context.sslContextManager().secretManager().registerSecretUpdateCallback(hash, name, *tsf.get());
+  }
+
+
+  return std::move(tsf);
 }
 
 ProtobufTypes::MessagePtr UpstreamSslSocketFactory::createEmptyConfigProto() {
@@ -35,12 +49,26 @@ static Registry::RegisterFactory<UpstreamSslSocketFactory,
 Network::TransportSocketFactoryPtr DownstreamSslSocketFactory::createTransportSocketFactory(
     const Protobuf::Message& message, Server::Configuration::TransportSocketFactoryContext& context,
     const std::vector<std::string>& server_names) {
-  return std::make_unique<Ssl::ServerSslSocketFactory>(
-      Ssl::ServerContextConfigImpl(
+
+  std::unique_ptr<Ssl::ServerContextConfigImpl> downstream_config(
+      new Ssl::ServerContextConfigImpl(
           MessageUtil::downcastAndValidate<const envoy::api::v2::auth::DownstreamTlsContext&>(
               message),
-          context.sslContextManager().secretManager()),
-      context.sslContextManager(), context.statsScope(), server_names);
+          context.sslContextManager().secretManager()));
+
+  auto hash = downstream_config->sdsConfigShourceHash();
+  auto name = downstream_config->sdsSecretName();
+
+
+  Network::TransportSocketFactoryPtr tsf = std::make_unique<Ssl::ServerSslSocketFactory>(
+        std::move(downstream_config),
+        context.sslContextManager(), context.statsScope(), server_names);
+
+  if(!name.empty()) {
+    context.sslContextManager().secretManager().registerSecretUpdateCallback(hash, name, *tsf.get());
+  }
+
+  return std::move(tsf);
 }
 
 ProtobufTypes::MessagePtr DownstreamSslSocketFactory::createEmptyConfigProto() {

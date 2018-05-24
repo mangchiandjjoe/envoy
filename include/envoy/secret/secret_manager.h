@@ -14,18 +14,6 @@
 namespace Envoy {
 namespace Secret {
 
-
-/**
- * Callbacks invoked by a secret manager.
- */
-class SecretCallbacks {
-public:
-  virtual ~SecretCallbacks() {}
-
-  virtual void onAddOrUpdateSecret(const uint64_t hash, const SecretSharedPtr secret) PURE;
-};
-
-
 /**
  * A manager for all static secrets
  */
@@ -34,7 +22,7 @@ public:
   virtual ~SecretManager() {}
 
   /**
-   * Add or update static secret
+   * Add or update static secret.
    *
    * @param secret Updated Secret
    * @return true when successful, otherwise returns false
@@ -42,7 +30,7 @@ public:
   virtual bool addOrUpdateStaticSecret(const SecretSharedPtr secret) PURE;
 
   /**
-   * @return the static secret for the given name
+   * @return the static secret for the given name.
    */
   virtual const SecretSharedPtr staticSecret(const std::string& name) const PURE;
 
@@ -61,12 +49,34 @@ public:
   virtual bool addOrUpdateDynamicSecret(const uint64_t hash, const SecretSharedPtr secret) PURE;
 
   /**
-   * @return the dynamic secret for the given ConfigSource and secret name
+   * @return the dynamic secret for the given ConfigSource and secret name.
    */
   virtual const SecretSharedPtr dynamicSecret(const uint64_t hash, const std::string& name) const PURE;
 
 
-  virtual void registerSecretCallback(SecretCallbacks& callback) PURE;
+  /**
+   * Register callback function for certificate initial download.
+   *
+   * @param callback Callback function
+   */
+  virtual void registerSecretInitializeCallback(SecretCallbacks& callback) PURE;
+
+  /**
+   * Register callback function when dynamic secrets were updated.
+   *
+   * @param hash Hash code of ConfigSource
+   * @param secret updated SecretSharedPtr
+   * @param callback Callback function
+   */
+  virtual void registerSecretUpdateCallback(const uint64_t config_source_hash,
+                                            const std::string& secret_name,
+                                            SecretCallbacks& callback) PURE;
+
+  virtual void addPendingClusterName(const std::string cluster_name) PURE;
+
+  virtual void removePendigClusterName(const std::string cluster_name) PURE;
+
+  virtual bool isPendingClusterName(const std::string cluster_name) PURE;
 
   /**
    * Calculate hash code of ConfigSource. To identify the same ConfigSource, calculate the hash

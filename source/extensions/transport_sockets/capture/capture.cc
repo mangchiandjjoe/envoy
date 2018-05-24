@@ -109,8 +109,9 @@ bool CaptureSocketFactory::implementsSecureTransport() const {
   return transport_socket_factory_->implementsSecureTransport();
 }
 
-bool CaptureSocketFactory::updateSecret(const uint64_t, const Secret::SecretSharedPtr) {
-  return false;
+// TODO (jaebong) implement this
+void CaptureSocketFactory::onAddOrUpdateSecret() {
+
 }
 
 } // namespace Capture

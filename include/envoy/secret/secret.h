@@ -31,9 +31,32 @@ public:
    * @return a string of private key
    */
   virtual const std::string& privateKey() const PURE;
+
+  /**
+   * @return true if the secret is downloaded from the SDS server
+   */
+  virtual bool fromSDS() const PURE;
+
+  /**
+   * @return hash code of SDS config source
+   */
+  virtual uint64_t configSourceHash() const PURE;
 };
 
 typedef std::shared_ptr<Secret> SecretSharedPtr;
+
+
+/**
+ * Callbacks invoked by a secret manager.
+ */
+class SecretCallbacks {
+public:
+  virtual ~SecretCallbacks() {}
+
+  virtual void onAddOrUpdateSecret() PURE;
+};
+
+
 
 } // namespace Secret
 } // namespace Envoy

@@ -373,10 +373,14 @@ std::string SslSocket::subjectLocalCertificate() const {
   return getSubjectFromCertificate(cert);
 }
 
-ClientSslSocketFactory::ClientSslSocketFactory(const ClientContextConfig& config,
+ClientSslSocketFactory::ClientSslSocketFactory(std::unique_ptr<ClientContextConfig> config,
                                                Ssl::ContextManager& manager,
                                                Stats::Scope& stats_scope)
-    : ssl_ctx_(manager.createSslClientContext(stats_scope, config)), config_(config) {}
+    : ssl_ctx_(manager.createSslClientContext(stats_scope, *config.get())),
+      config_(std::move(config)),
+      manager_(manager),
+      stats_scope_(stats_scope) {
+}
 
 Network::TransportSocketPtr ClientSslSocketFactory::createTransportSocket() const {
   return std::make_unique<Ssl::SslSocket>(*ssl_ctx_, Ssl::InitialState::Client);
@@ -384,15 +388,25 @@ Network::TransportSocketPtr ClientSslSocketFactory::createTransportSocket() cons
 
 bool ClientSslSocketFactory::implementsSecureTransport() const { return true; }
 
-bool ClientSslSocketFactory::updateSecret(const uint64_t, const Secret::SecretSharedPtr) {
-  return false;
+void ClientSslSocketFactory::onAddOrUpdateSecret() {
+  ENVOY_LOG(info, "cluster socket updated");
+  ENVOY_LOG(debug, "{}\n{}", config_->certChain(), config_->privateKey());
+  auto update_context = manager_.updateSslClientContext(ssl_ctx_, stats_scope_, *config_.get());
+  if (update_context) {
+    ssl_ctx_ = std::move(update_context);
+  }
 }
 
-ServerSslSocketFactory::ServerSslSocketFactory(const ServerContextConfig& config,
+ServerSslSocketFactory::ServerSslSocketFactory(std::unique_ptr<ServerContextConfig> config,
                                                Ssl::ContextManager& manager,
                                                Stats::Scope& stats_scope,
                                                const std::vector<std::string>& server_names)
-    : ssl_ctx_(manager.createSslServerContext(stats_scope, config, server_names)) {}
+    : ssl_ctx_(manager.createSslServerContext(stats_scope, *config.get(), server_names)),
+      config_(std::move(config)),
+      manager_(manager),
+      stats_scope_(stats_scope),
+      server_names_(server_names) {
+}
 
 Network::TransportSocketPtr ServerSslSocketFactory::createTransportSocket() const {
   return std::make_unique<Ssl::SslSocket>(*ssl_ctx_, Ssl::InitialState::Server);
@@ -400,8 +414,13 @@ Network::TransportSocketPtr ServerSslSocketFactory::createTransportSocket() cons
 
 bool ServerSslSocketFactory::implementsSecureTransport() const { return true; }
 
-bool ServerSslSocketFactory::updateSecret(const uint64_t, const Secret::SecretSharedPtr) {
-  return true;
+void ServerSslSocketFactory::onAddOrUpdateSecret() {
+  ENVOY_LOG(info, "listener socket updated");
+  ENVOY_LOG(debug, "{}\n{}", config_->certChain(), config_->privateKey());
+  auto update_context = manager_.updateSslServerContext(ssl_ctx_, stats_scope_, *config_.get(), server_names_);
+  if (update_context) {
+    ssl_ctx_ = std::move(update_context);
+  }
 }
 
 } // namespace Ssl

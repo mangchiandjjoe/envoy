@@ -20,12 +20,18 @@ public:
   EnvoyResourceDependencyException(const std::string& message) : EnvoyException(message) {}
 };
 
+
 /**
- * Resource is not ready but it is not recoverable
+ * Resource is not ready but it is recoverable
  */
-class EnvoyResourceDependencyFatalException : public EnvoyException {
-public:
-  EnvoyResourceDependencyFatalException(const std::string& message) : EnvoyException(message) {}
+class EnvoyClusterDependencyException : public EnvoyException {
+ public:
+  EnvoyClusterDependencyException(const std::string& message, const std::string name)
+      : EnvoyException(message),
+        cluster_name(name) {
+  }
+
+  const std::string cluster_name;
 };
 
-} // namespace Envoy
+}  // namespace Envoy

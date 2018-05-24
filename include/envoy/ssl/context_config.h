@@ -103,11 +103,10 @@ public:
    */
   virtual unsigned maxProtocolVersion() const PURE;
 
-  /**
-   * Refresh secret. Specially dynamic secret read from the secret manager
-   * @return true when successful. otherwise return false
-   */
-  virtual bool refreshSecret() PURE;
+
+  virtual uint64_t sdsConfigShourceHash() const PURE;
+
+  virtual const std::string sdsSecretName() const PURE;
 };
 
 class ClientContextConfig : public virtual ContextConfig {

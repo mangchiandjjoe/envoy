@@ -212,7 +212,7 @@ public:
 
   ClusterUpdateCallbacksHandlePtr
   addThreadLocalClusterUpdateCallbacks(ClusterUpdateCallbacks&) override;
-  void onAddOrUpdateSecret(const uint64_t, const Secret::SecretSharedPtr) override;
+  void onAddOrUpdateSecret() override;
 
 private:
   /**
@@ -383,6 +383,7 @@ private:
   Grpc::AsyncClientManagerPtr async_client_manager_;
   Server::ConfigTracker::EntryOwnerPtr config_tracker_entry_;
 
+  Secret::SecretManager& secret_manager_;
   mutable std::shared_timed_mutex pending_clusters_mutex_;
   std::vector<PendingClusterInfo> pending_clusters_;
 };

@@ -151,17 +151,6 @@ unsigned ContextConfigImpl::tlsVersionFromProto(
   NOT_REACHED;
 }
 
-bool ContextConfigImpl::refreshSecret() {
-  if (!sds_dynamic_secret_name_.empty()) {
-    auto secret = secret_manager_.dynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_);
-    if (secret) {
-      // cert_chain_ = secret->certificateChain();
-      // private_key_ = secret->privateKey();
-    }
-  }
-  return true;
-}
-
 const std::string& ContextConfigImpl::certChain() const {
   if (!cert_chain_.empty()) {
     return cert_chain_;

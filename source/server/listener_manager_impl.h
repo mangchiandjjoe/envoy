@@ -93,21 +93,6 @@ struct ListenerManagerStats {
   ALL_LISTENER_MANAGER_STATS(GENERATE_COUNTER_STRUCT, GENERATE_GAUGE_STRUCT)
 };
 
-struct PendingListenerInfo {
-  const envoy::api::v2::Listener config;
-  const std::string version_info;
-  const bool modifiable;
-
-  PendingListenerInfo(const envoy::api::v2::Listener& config_, const std::string& version_info_,
-                      bool modifiable_)
-      : config([&config_] {
-          envoy::api::v2::Listener cfg;
-          cfg.CopyFrom(config_);
-          return cfg;
-        }()),
-        version_info(version_info_), modifiable(modifiable_) {}
-};
-
 /**
  * Implementation of ListenerManager.
  */
@@ -133,8 +118,7 @@ public:
   void startWorkers(GuardDog& guard_dog) override;
   void stopListeners() override;
   void stopWorkers() override;
-
-  void onAddOrUpdateSecret(const uint64_t hash, const Secret::SecretSharedPtr secret) override;
+  void onAddOrUpdateSecret() override;
 
   Instance& server_;
   ListenerComponentFactory& factory_;
@@ -148,6 +132,23 @@ private:
 
     ListenerImplPtr listener_;
     uint64_t workers_pending_removal_;
+  };
+
+  struct PendingListenerInfo {
+    const envoy::api::v2::Listener config;
+    const std::string version_info;
+    const bool modifiable;
+
+    PendingListenerInfo(const envoy::api::v2::Listener& config_, const std::string& version_info_,
+                        bool modifiable_)
+        : config([&config_] {
+            envoy::api::v2::Listener cfg;
+            cfg.CopyFrom(config_);
+            return cfg;
+          }()),
+          version_info(version_info_),
+          modifiable(modifiable_) {
+    }
   };
 
   void addListenerToWorker(Worker& worker, ListenerImpl& listener);

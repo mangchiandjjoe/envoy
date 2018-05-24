@@ -49,7 +49,7 @@ public:
   // Network::TransportSocketFactory
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
-  bool updateSecret(const uint64_t, const Secret::SecretSharedPtr) override;
+  void onAddOrUpdateSecret() override;
 
 private:
   const std::string path_prefix_;

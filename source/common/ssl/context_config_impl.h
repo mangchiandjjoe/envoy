@@ -47,7 +47,9 @@ public:
   const std::string& verifyCertificateHash() const override { return verify_certificate_hash_; };
   unsigned minProtocolVersion() const override { return min_protocol_version_; };
   unsigned maxProtocolVersion() const override { return max_protocol_version_; };
-  bool refreshSecret() override;
+
+  uint64_t sdsConfigShourceHash() const { return sds_config_source_hash_; }
+  const std::string sdsSecretName() const { return sds_dynamic_secret_name_; }
 
 protected:
   ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config,
@@ -83,7 +85,8 @@ private:
   const unsigned max_protocol_version_;
 };
 
-class ClientContextConfigImpl : public ContextConfigImpl, public ClientContextConfig {
+class ClientContextConfigImpl : public ContextConfigImpl,
+                                public ClientContextConfig {
 public:
   explicit ClientContextConfigImpl(const envoy::api::v2::auth::UpstreamTlsContext& config,
                                    Secret::SecretManager& secret_manager);
@@ -92,14 +95,12 @@ public:
 
   // Ssl::ClientContextConfig
   const std::string& serverNameIndication() const override { return server_name_indication_; }
-
-  bool refreshSecret() override { return ContextConfigImpl::refreshSecret(); }
-
 private:
   const std::string server_name_indication_;
 };
 
-class ServerContextConfigImpl : public ContextConfigImpl, public ServerContextConfig {
+class ServerContextConfigImpl : public ContextConfigImpl,
+                                public ServerContextConfig {
 public:
   explicit ServerContextConfigImpl(const envoy::api::v2::auth::DownstreamTlsContext& config,
                                    Secret::SecretManager& secret_manager);
@@ -111,8 +112,6 @@ public:
   const std::vector<SessionTicketKey>& sessionTicketKeys() const override {
     return session_ticket_keys_;
   }
-
-  bool refreshSecret() override { return ContextConfigImpl::refreshSecret(); }
 
 private:
   const bool require_client_certificate_;

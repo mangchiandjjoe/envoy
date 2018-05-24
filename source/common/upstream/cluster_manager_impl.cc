@@ -177,9 +177,10 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
       local_info_(local_info), cm_stats_(generateStats(stats)),
       init_helper_([this](Cluster& cluster) { onClusterInit(cluster); }),
       config_tracker_entry_(
-          admin.getConfigTracker().add("clusters", [this] { return dumpClusterConfigs(); })) {
+          admin.getConfigTracker().add("clusters", [this] { return dumpClusterConfigs(); })),
+          secret_manager_(secret_manager) {
 
-  secret_manager.registerSecretCallback(*this);
+  secret_manager_.registerSecretInitializeCallback(*this);
 
   async_client_manager_ = std::make_unique<Grpc::AsyncClientManagerImpl>(*this, tls);
   const auto& cm_config = bootstrap.cluster_manager();
@@ -481,16 +482,7 @@ bool ClusterManagerImpl::removeCluster(const std::string& cluster_name) {
   return removed;
 }
 
-void ClusterManagerImpl::onAddOrUpdateSecret(const uint64_t hash,
-                                             const Secret::SecretSharedPtr secret) {
-  // refresh secrets when necessary
-  for (auto& active_cluster : active_clusters_) {
-    active_cluster.second->cluster_->info()->transportSocketFactory().updateSecret(hash, secret);
-  }
-  for (const auto& warming_cluster : warming_clusters_) {
-    warming_cluster.second->cluster_->info()->transportSocketFactory().updateSecret(hash, secret);
-  }
-
+void ClusterManagerImpl::onAddOrUpdateSecret() {
   // create clusters remain in the pending creating list
   std::vector<PendingClusterInfo> clusters;
 
@@ -524,12 +516,14 @@ void ClusterManagerImpl::loadCluster(const envoy::api::v2::Cluster& cluster,
   try {
     new_cluster = ClusterSharedPtr(
         factory_.clusterFromProto(cluster, *this, outlier_event_logger_, added_via_api));
+    secret_manager_.removePendigClusterName(cluster.name());
   } catch (const EnvoyResourceDependencyException& e) {
     ENVOY_LOG(info,
               "required resources are not ready yet. added cluster to pending creation list: {} {}",
               cluster.name(), e.what());
     {
       std::unique_lock<std::shared_timed_mutex> lhs(pending_clusters_mutex_);
+      secret_manager_.addPendingClusterName(cluster.name());
       pending_clusters_.push_back({cluster, version_info});
     }
     throw e;
@@ -644,7 +638,7 @@ Host::CreateConnectionData ClusterManagerImpl::tcpConnForCluster(const std::stri
 
   auto entry = cluster_manager.thread_local_clusters_.find(cluster);
   if (entry == cluster_manager.thread_local_clusters_.end()) {
-    throw EnvoyException(fmt::format("unknown cluster '{}'", cluster));
+    throw EnvoyException(fmt::format("unknown cluster 2 '{}'", cluster));
   }
 
   HostConstSharedPtr logical_host = entry->second->lb_->chooseHost(context);
@@ -672,7 +666,7 @@ Http::AsyncClient& ClusterManagerImpl::httpAsyncClientForCluster(const std::stri
   if (entry != cluster_manager.thread_local_clusters_.end()) {
     return entry->second->http_async_client_;
   } else {
-    throw EnvoyException(fmt::format("unknown cluster '{}'", cluster));
+    throw EnvoyException(fmt::format("unknown cluster 3 '{}'", cluster));
   }
 }
 

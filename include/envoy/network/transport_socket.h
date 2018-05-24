@@ -145,7 +145,7 @@ typedef std::unique_ptr<TransportSocket> TransportSocketPtr;
 /**
  * A factory for creating transport socket. It will be associated to filter chains and clusters.
  */
-class TransportSocketFactory {
+class TransportSocketFactory : public Secret::SecretCallbacks {
 public:
   virtual ~TransportSocketFactory() {}
 
@@ -159,10 +159,8 @@ public:
    */
   virtual TransportSocketPtr createTransportSocket() const PURE;
 
-  /**
-   * @return True on success. Otherwise return false.
-   */
-  virtual bool updateSecret(const uint64_t, const Secret::SecretSharedPtr) PURE;
+
+  virtual void onAddOrUpdateSecret() PURE;
 };
 
 typedef std::unique_ptr<TransportSocketFactory> TransportSocketFactoryPtr;

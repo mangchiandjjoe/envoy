@@ -47,12 +47,25 @@ bool SecretManagerImpl::addOrUpdateDynamicSecret(const uint64_t config_source_ha
   sds_service->second[secret->name()] = secret;
 
   // Post callback to call registered SecretCallbacks functions
-  std::function<void()> lambda = [this, config_source_hash, secret]() {
-    for (const auto& callback : secret_callbacks_) {
-      callback->onAddOrUpdateSecret(config_source_hash, secret);
+  std::function<void()> secret_update_callback = [this, config_source_hash, secret]() {
+    // running secret update callback function
+    for (auto& update_callback : secret_update_callback_) {
+      if(update_callback.config_source_hash == config_source_hash &&
+          update_callback.secret_name == secret->name() &&
+          update_callback.secret->certificateChain() != secret->certificateChain() &&
+          update_callback.secret->privateKey() != secret->privateKey()) {
+        update_callback.callback->onAddOrUpdateSecret();
+        update_callback.secret = secret;
+      }
     }
+
+    // running secret initialization callback functions
+    for (const auto& callback : secret_callbacks_) {
+      callback->onAddOrUpdateSecret();
+    }
+
   };
-  server_.dispatcher().post(lambda);
+  server_.dispatcher().post(secret_update_callback);
 
   return true;
 }
@@ -97,9 +110,30 @@ bool SecretManagerImpl::removeDynamicSecret(const uint64_t config_source_hash,
   return true;
 }
 
-void SecretManagerImpl::registerSecretCallback(SecretCallbacks& callback) {
+void SecretManagerImpl::registerSecretInitializeCallback(SecretCallbacks& callback) {
   secret_callbacks_.push_back(&callback);
 }
+
+void SecretManagerImpl::registerSecretUpdateCallback(const uint64_t hash, const std::string& name,
+                                                     SecretCallbacks& callback) {
+  auto secret = dynamicSecret(hash, name);
+  if(secret) {
+    secret_update_callback_.push_back({hash, name, secret, callback});
+  }
+}
+
+void SecretManagerImpl::addPendingClusterName(const std::string cluster_name) {
+  pending_clusters_.emplace(cluster_name);
+}
+
+void SecretManagerImpl::removePendigClusterName(const std::string cluster_name) {
+  pending_clusters_.erase(cluster_name);
+}
+
+bool SecretManagerImpl::isPendingClusterName(const std::string cluster_name) {
+  return pending_clusters_.find(cluster_name) != pending_clusters_.end();
+}
+
 
 } // namespace Secret
 } // namespace Envoy

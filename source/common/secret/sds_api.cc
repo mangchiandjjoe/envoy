@@ -17,7 +17,8 @@ namespace Secret {
 
 SdsApi::SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
                SecretManager& secret_manager)
-    : server_(server), sds_config_([&sds_config] {
+    : server_(server),
+      sds_config_([&sds_config] {
         envoy::api::v2::core::ConfigSource cfg;
         cfg.CopyFrom(sds_config);
         return cfg;
@@ -35,9 +36,9 @@ void SdsApi::initialize(std::function<void()> callback) {
       server_.random(), server_.stats(),
       [this]() -> Config::Subscription<envoy::api::v2::auth::Secret>* {
         return new SdsSubscription(Config::Utility::generateStats(this->server_.stats()),
-                                   this->sds_config_, this->server_.clusterManager(),
-                                   this->server_.dispatcher(), this->server_.random(),
-                                   this->server_.localInfo());
+            this->sds_config_, this->server_.clusterManager(),
+            this->server_.dispatcher(), this->server_.random(),
+            this->server_.localInfo());
       },
       "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets",
       "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets");
@@ -50,14 +51,15 @@ void SdsApi::initialize(std::function<void()> callback) {
 void SdsApi::onConfigUpdate(const ResourceVector& resources, const std::string&) {
   for (const auto& resource : resources) {
     switch (resource.type_case()) {
-    case envoy::api::v2::auth::Secret::kTlsCertificate:
-      secret_manager_.addOrUpdateDynamicSecret(sds_config_source_hash_,
-                                               SecretSharedPtr(new SecretImpl(resource)));
-      break;
-    case envoy::api::v2::auth::Secret::kSessionTicketKeys:
-      NOT_IMPLEMENTED
-    default:
-      throw EnvoyException("sds: invalid configuration");
+      case envoy::api::v2::auth::Secret::kTlsCertificate:
+        secret_manager_.addOrUpdateDynamicSecret(
+            sds_config_source_hash_,
+            SecretSharedPtr(new SecretImpl(resource, true, sds_config_source_hash_)));
+        break;
+      case envoy::api::v2::auth::Secret::kSessionTicketKeys:
+        NOT_IMPLEMENTED
+      default:
+        throw EnvoyException("sds: invalid configuration");
     }
   }
 
@@ -76,5 +78,5 @@ void SdsApi::runInitializeCallbackIfAny() {
   }
 }
 
-} // namespace Secret
-} // namespace Envoy
+}  // namespace Secret
+}  // namespace Envoy

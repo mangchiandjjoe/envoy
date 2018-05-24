@@ -64,29 +64,35 @@ private:
   mutable std::string cached_url_encoded_pem_encoded_peer_certificate_;
 };
 
-class ClientSslSocketFactory : public Network::TransportSocketFactory {
+class ClientSslSocketFactory : public Network::TransportSocketFactory, Logger::Loggable<Logger::Id::config> {
 public:
-  ClientSslSocketFactory(const ClientContextConfig& config, Ssl::ContextManager& manager,
+  ClientSslSocketFactory(const std::unique_ptr<ClientContextConfig> config, Ssl::ContextManager& manager,
                          Stats::Scope& stats_scope);
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
-  bool updateSecret(const uint64_t, const Secret::SecretSharedPtr) override;
+  void onAddOrUpdateSecret() override;
 
 private:
-  const ClientContextPtr ssl_ctx_;
-  const ClientContextConfig& config_;
+  ClientContextPtr ssl_ctx_;
+  std::unique_ptr<ClientContextConfig> config_;
+  Ssl::ContextManager& manager_;
+  Stats::Scope& stats_scope_;
 };
 
-class ServerSslSocketFactory : public Network::TransportSocketFactory {
+class ServerSslSocketFactory : public Network::TransportSocketFactory, Logger::Loggable<Logger::Id::config> {
 public:
-  ServerSslSocketFactory(const ServerContextConfig& config, Ssl::ContextManager& manager,
+  ServerSslSocketFactory(const std::unique_ptr<ServerContextConfig> config, Ssl::ContextManager& manager,
                          Stats::Scope& stats_scope, const std::vector<std::string>& server_names);
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
-  bool updateSecret(const uint64_t, const Secret::SecretSharedPtr) override;
+  void onAddOrUpdateSecret() override;
 
 private:
-  const ServerContextPtr ssl_ctx_;
+  ServerContextPtr ssl_ctx_;
+  std::unique_ptr<ServerContextConfig> config_;
+  Ssl::ContextManager& manager_;
+  Stats::Scope& stats_scope_;
+  const std::vector<std::string> server_names_;
 };
 
 } // namespace Ssl
