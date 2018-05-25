@@ -14,8 +14,6 @@
 namespace Envoy {
 namespace Ssl {
 
-namespace {}
-
 const std::string ContextConfigImpl::DEFAULT_CIPHER_SUITES =
     "[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305]:"
     "[ECDHE-RSA-AES128-GCM-SHA256|ECDHE-RSA-CHACHA20-POLY1305]:"
