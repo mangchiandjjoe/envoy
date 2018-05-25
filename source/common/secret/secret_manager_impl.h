@@ -10,16 +10,16 @@
 namespace Envoy {
 namespace Secret {
 
-typedef std::unordered_map<std::string, SecretSharedPtr> SecretSharedPtrMap;
-
 class SecretManagerImpl : public SecretManager, Logger::Loggable<Logger::Id::upstream> {
 public:
   SecretManagerImpl(){};
 
-  void addOrUpdateStaticSecret(const SecretSharedPtr secret) override;
-  const SecretSharedPtr staticSecret(const std::string& name) const override;
+  void addOrUpdateStaticSecret(SecretSharedPtr secret) override;
+  const SecretSharedPtr findSecret(const std::string& name) const override;
 
 private:
+  typedef std::unordered_map<std::string, SecretSharedPtr> SecretSharedPtrMap;
+
   SecretSharedPtrMap static_secrets_;
 };
 

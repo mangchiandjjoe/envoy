@@ -9,6 +9,8 @@ namespace Secret {
 
 /**
  * A manager for all static secrets.
+ *
+ * TODO(jaebong) Support dynamic secrets.
  */
 class SecretManager {
 public:
@@ -17,13 +19,12 @@ public:
   /**
    * @param secret Updated Secret.
    */
-
-  virtual void addOrUpdateStaticSecret(const SecretSharedPtr secret) PURE;
+  virtual void addOrUpdateStaticSecret(SecretSharedPtr secret) PURE;
 
   /**
    * @return the static secret for the given name.
    */
-  virtual const SecretSharedPtr staticSecret(const std::string& name) const PURE;
+  virtual const SecretSharedPtr findSecret(const std::string& name) const PURE;
 };
 
 } // namespace Secret

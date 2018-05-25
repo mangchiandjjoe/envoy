@@ -5,6 +5,8 @@
 
 #include "envoy/common/pure.h"
 
+#include "common/protobuf/protobuf.h"
+
 namespace Envoy {
 namespace Secret {
 
@@ -16,19 +18,14 @@ public:
   virtual ~Secret() {}
 
   /**
-   * @return a name of the SDS secret.
+   * @return protobuf message that generates the secret.
+   */
+  virtual const Protobuf::Message& message() const PURE;
+
+  /**
+   * @return a name of the secret.
    */
   virtual const std::string& name() const PURE;
-
-  /**
-   * @return a string of certificate chain.
-   */
-  virtual const std::string& certificateChain() const PURE;
-
-  /**
-   * @return a string of private key.
-   */
-  virtual const std::string& privateKey() const PURE;
 };
 
 typedef std::shared_ptr<Secret> SecretSharedPtr;

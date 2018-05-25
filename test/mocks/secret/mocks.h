@@ -20,9 +20,8 @@ public:
   ~MockSecretManager();
 
   MOCK_METHOD1(addOrUpdateStaticSecret, void(const SecretSharedPtr secret));
-  MOCK_CONST_METHOD1(staticSecret, const SecretSharedPtr(const std::string& name));
+  MOCK_CONST_METHOD1(findSecret, const SecretSharedPtr(const std::string& name));
 };
 
 } // namespace Secret
-  // namespace Secret
 } // namespace Envoy

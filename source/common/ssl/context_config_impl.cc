@@ -1,16 +1,20 @@
 #include "common/ssl/context_config_impl.h"
 
+#include <memory>
 #include <string>
 
 #include "common/common/assert.h"
 #include "common/config/datasource.h"
 #include "common/config/tls_context_json.h"
 #include "common/protobuf/utility.h"
+#include "common/ssl/tls_certificate_config_impl.h"
 
 #include "openssl/ssl.h"
 
 namespace Envoy {
 namespace Ssl {
+
+namespace {}
 
 const std::string ContextConfigImpl::DEFAULT_CIPHER_SUITES =
     "[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305]:"
@@ -47,13 +51,16 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           return Config::DataSource::read(config.tls_certificates()[0].certificate_chain(), true);
         } else if (!config.tls_certificate_sds_secret_configs().empty()) {
           auto static_secret =
-              secret_manager.staticSecret(config.tls_certificate_sds_secret_configs()[0].name());
+              secret_manager.findSecret(config.tls_certificate_sds_secret_configs()[0].name());
+
           if (static_secret == nullptr) {
             throw EnvoyException(
                 fmt::format("Static secret is not defined: {}",
                             config.tls_certificate_sds_secret_configs()[0].name()));
           }
-          return static_secret->certificateChain();
+
+          return std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(static_secret)
+              ->certificateChain();
         } else {
           return std::string("");
         }
@@ -68,13 +75,14 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
         } else if (!config.tls_certificate_sds_secret_configs().empty()) {
           // static SDS secret
           auto static_secret =
-              secret_manager.staticSecret(config.tls_certificate_sds_secret_configs()[0].name());
+              secret_manager.findSecret(config.tls_certificate_sds_secret_configs()[0].name());
           if (static_secret == nullptr) {
             throw EnvoyException(
                 fmt::format("Static secret is not defined: {}",
                             config.tls_certificate_sds_secret_configs()[0].name()));
           }
-          return static_secret->privateKey();
+          return std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(static_secret)
+              ->privateKey();
         } else {
           return std::string("");
         }
@@ -169,8 +177,8 @@ ServerContextConfigImpl::ServerContextConfigImpl(
         return ret;
       }()) {
   // TODO(PiotrSikora): Support multiple TLS certificates.
-  if (config.common_tls_context().tls_certificates().size() != 1 &&
-      config.common_tls_context().tls_certificate_sds_secret_configs().size() != 1) {
+  if ((config.common_tls_context().tls_certificates().size() +
+       config.common_tls_context().tls_certificate_sds_secret_configs().size()) != 1) {
     throw EnvoyException("A single TLS certificate is required for server contexts");
   }
 }

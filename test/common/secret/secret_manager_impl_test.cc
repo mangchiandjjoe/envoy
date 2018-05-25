@@ -1,7 +1,7 @@
 #include "envoy/api/v2/auth/cert.pb.h"
 
-#include "common/secret/secret_impl.h"
 #include "common/secret/secret_manager_impl.h"
+#include "common/ssl/tls_certificate_config_impl.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -63,17 +63,20 @@ TEST_F(SecretManagerImplTest, WeightedClusterFallthroughConfig) {
   tls_certificate->mutable_private_key()->set_filename(
       "test/config/integration/certs/serverkey.pem");
 
-  SecretSharedPtr secret(new SecretImpl(secret_config));
-
   SecretManagerImpl secret_manager;
-  secret_manager.addOrUpdateStaticSecret(secret);
+  secret_manager.addOrUpdateStaticSecret(
+      std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
 
-  ASSERT_EQ(secret_manager.staticSecret("undefined"), nullptr);
+  ASSERT_EQ(secret_manager.findSecret("undefined"), nullptr);
 
-  ASSERT_NE(secret_manager.staticSecret("abc.com"), nullptr);
+  ASSERT_NE(secret_manager.findSecret("abc.com"), nullptr);
 
-  EXPECT_EQ(kExpectedCertificateChain, secret_manager.staticSecret("abc.com")->certificateChain());
-  EXPECT_EQ(kExpectedPrivateKey, secret_manager.staticSecret("abc.com")->privateKey());
+  EXPECT_EQ(kExpectedCertificateChain, std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(
+                                           secret_manager.findSecret("abc.com"))
+                                           ->certificateChain());
+  EXPECT_EQ(kExpectedPrivateKey, std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(
+                                     secret_manager.findSecret("abc.com"))
+                                     ->privateKey());
 }
 
 } // namespace

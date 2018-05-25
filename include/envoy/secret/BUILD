@@ -11,6 +11,9 @@ envoy_package()
 envoy_cc_library(
     name = "secret_interface",
     hdrs = ["secret.h"],
+    deps = [
+        "//source/common/protobuf",
+    ],
 )
 
 envoy_cc_library(

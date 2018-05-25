@@ -55,6 +55,7 @@ InstanceImpl::InstanceImpl(Options& options, Network::Address::InstanceConstShar
       handler_(new ConnectionHandlerImpl(ENVOY_LOGGER(), *dispatcher_)),
       random_generator_(std::move(random_generator)), listener_component_factory_(*this),
       worker_factory_(thread_local_, *api_, hooks),
+      secret_manager_(new Secret::SecretManagerImpl()),
       dns_resolver_(dispatcher_->createDnsResolver({})),
       access_log_manager_(*api_, *dispatcher_, access_log_lock, store), terminated_(false) {
 
@@ -247,9 +248,6 @@ void InstanceImpl::initialize(Options& options,
   // Workers get created first so they register for thread local updates.
   listener_manager_.reset(
       new ListenerManagerImpl(*this, listener_component_factory_, worker_factory_));
-
-  // Shared storage of secrets from SDS
-  secret_manager_.reset(new Secret::SecretManagerImpl());
 
   // The main thread is also registered for thread local updates so that code that does not care
   // whether it runs on the main thread or on workers can still use TLS.

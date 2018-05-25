@@ -2,10 +2,10 @@
 #include <vector>
 
 #include "common/json/json_loader.h"
-#include "common/secret/secret_impl.h"
 #include "common/secret/secret_manager_impl.h"
 #include "common/ssl/context_config_impl.h"
 #include "common/ssl/context_impl.h"
+#include "common/ssl/tls_certificate_config_impl.h"
 #include "common/stats/stats_impl.h"
 
 #include "test/common/ssl/ssl_certs_test.h"
@@ -434,7 +434,7 @@ Hk8EP6nnwEi/312iSoo/BxuYUc9Y/XTKUpcMiwu7MA5b
   tls_certificate->mutable_private_key()->set_filename(
       "test/common/ssl/test_data/selfsigned_key.pem");
 
-  Secret::SecretSharedPtr secret(new Secret::SecretImpl(secret_config));
+  Secret::SecretSharedPtr secret(new Ssl::TlsCertificateConfigImpl(secret_config));
   Secret::SecretManagerImpl secret_manager;
   secret_manager.addOrUpdateStaticSecret(secret);
 
@@ -459,7 +459,7 @@ TEST(ClientContextConfigImplTest, MissingStaticSecretTlsCertificates) {
   tls_certificate->mutable_private_key()->set_filename(
       "test/common/ssl/test_data/selfsigned_key.pem");
 
-  Secret::SecretSharedPtr secret(new Secret::SecretImpl(secret_config));
+  Secret::SecretSharedPtr secret(new Ssl::TlsCertificateConfigImpl(secret_config));
   Secret::SecretManagerImpl secret_manager;
   secret_manager.addOrUpdateStaticSecret(secret);
 
