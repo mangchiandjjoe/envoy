@@ -18,7 +18,7 @@ namespace {
 
 template <typename T>
 const std::shared_ptr<T> findSecretAndCheckType(const Secret::SecretManager& secret_manager,
-                                    const std::string& name) {
+                                                const std::string& name) {
 
   auto secret = secret_manager.findSecret(name);
   if (secret == nullptr) {
