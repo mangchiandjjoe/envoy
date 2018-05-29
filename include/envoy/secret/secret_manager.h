@@ -19,10 +19,10 @@ public:
   /**
    * @param secret Updated Secret.
    */
-  virtual void addOrUpdateStaticSecret(SecretSharedPtr secret) PURE;
+  virtual void addOrUpdateSecret(SecretSharedPtr secret) PURE;
 
   /**
-   * @return the static secret for the given name.
+   * @return the SecretSharedPtr for the given name.
    */
   virtual const SecretSharedPtr findSecret(const std::string& name) const PURE;
 };

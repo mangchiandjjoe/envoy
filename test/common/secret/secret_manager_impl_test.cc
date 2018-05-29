@@ -64,8 +64,7 @@ TEST_F(SecretManagerImplTest, WeightedClusterFallthroughConfig) {
       "test/config/integration/certs/serverkey.pem");
 
   SecretManagerImpl secret_manager;
-  secret_manager.addOrUpdateStaticSecret(
-      std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
+  secret_manager.addOrUpdateSecret(std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
 
   ASSERT_EQ(secret_manager.findSecret("undefined"), nullptr);
 

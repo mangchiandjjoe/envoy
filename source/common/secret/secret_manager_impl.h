@@ -14,7 +14,7 @@ class SecretManagerImpl : public SecretManager, Logger::Loggable<Logger::Id::ups
 public:
   SecretManagerImpl(){};
 
-  void addOrUpdateStaticSecret(SecretSharedPtr secret) override;
+  void addOrUpdateSecret(SecretSharedPtr secret) override;
   const SecretSharedPtr findSecret(const std::string& name) const override;
 
 private:

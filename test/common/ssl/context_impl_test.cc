@@ -21,6 +21,24 @@ namespace Ssl {
 
 class SslContextImplTest : public SslCertsTest {};
 
+class TestSecretImpl : public Secret::Secret {
+public:
+  TestSecretImpl(const envoy::api::v2::auth::Secret& message, const std::string name)
+      : message_([&message] {
+          envoy::api::v2::auth::Secret cfg;
+          cfg.CopyFrom(message);
+          return cfg;
+        }()),
+        name_(name) {}
+
+  const envoy::api::v2::auth::Secret& message() const override { return message_; }
+  const std::string& name() const override { return name_; }
+
+private:
+  const envoy::api::v2::auth::Secret message_;
+  const std::string name_;
+};
+
 TEST_F(SslContextImplTest, TestdNSNameMatching) {
   EXPECT_TRUE(ContextImpl::dNSNameMatch("lyft.com", "lyft.com"));
   EXPECT_TRUE(ContextImpl::dNSNameMatch("a.lyft.com", "*.lyft.com"));
@@ -436,7 +454,7 @@ Hk8EP6nnwEi/312iSoo/BxuYUc9Y/XTKUpcMiwu7MA5b
 
   Secret::SecretSharedPtr secret(new Ssl::TlsCertificateConfigImpl(secret_config));
   Secret::SecretManagerImpl secret_manager;
-  secret_manager.addOrUpdateStaticSecret(secret);
+  secret_manager.addOrUpdateSecret(secret);
 
   envoy::api::v2::auth::UpstreamTlsContext tls_context;
   tls_context.mutable_common_tls_context()
@@ -461,7 +479,7 @@ TEST(ClientContextConfigImplTest, MissingStaticSecretTlsCertificates) {
 
   Secret::SecretSharedPtr secret(new Ssl::TlsCertificateConfigImpl(secret_config));
   Secret::SecretManagerImpl secret_manager;
-  secret_manager.addOrUpdateStaticSecret(secret);
+  secret_manager.addOrUpdateSecret(secret);
 
   envoy::api::v2::auth::UpstreamTlsContext tls_context;
   tls_context.mutable_common_tls_context()
@@ -472,6 +490,24 @@ TEST(ClientContextConfigImplTest, MissingStaticSecretTlsCertificates) {
   EXPECT_THROW_WITH_MESSAGE(
       ClientContextConfigImpl client_context_config(tls_context, secret_manager), EnvoyException,
       "Static secret is not defined: missing");
+}
+
+TEST(ClientContextConfigImplTest, InvalidSecretType) {
+  envoy::api::v2::auth::Secret secret_config;
+
+  Secret::SecretSharedPtr secret(new TestSecretImpl(secret_config, "test"));
+  Secret::SecretManagerImpl secret_manager;
+  secret_manager.addOrUpdateSecret(secret);
+
+  envoy::api::v2::auth::UpstreamTlsContext tls_context;
+  tls_context.mutable_common_tls_context()
+      ->mutable_tls_certificate_sds_secret_configs()
+      ->Add()
+      ->set_name("test");
+
+  EXPECT_THROW_WITH_MESSAGE(
+      ClientContextConfigImpl client_context_config(tls_context, secret_manager), EnvoyException,
+      "Invalid type of secret was returned for 'test'");
 }
 
 // Multiple TLS certificates are not yet supported, but one is expected for

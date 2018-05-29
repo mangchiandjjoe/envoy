@@ -13,7 +13,7 @@ class TlsCertificateConfigImpl : public Secret::Secret {
 public:
   TlsCertificateConfigImpl(const envoy::api::v2::auth::Secret& config);
 
-  const Protobuf::Message& message() const override { return message_; }
+  const envoy::api::v2::auth::Secret& message() const override { return message_; }
 
   const std::string& name() const override { return name_; }
 

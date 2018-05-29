@@ -3,7 +3,7 @@
 namespace Envoy {
 namespace Secret {
 
-void SecretManagerImpl::addOrUpdateStaticSecret(SecretSharedPtr secret) {
+void SecretManagerImpl::addOrUpdateSecret(SecretSharedPtr secret) {
   static_secrets_[secret->name()] = secret;
 }
 

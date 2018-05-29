@@ -14,6 +14,27 @@
 namespace Envoy {
 namespace Ssl {
 
+namespace {
+
+template <typename T>
+const std::shared_ptr<T> findSecretAndCheckType(const Secret::SecretManager& secret_manager,
+                                    const std::string& name) {
+
+  auto secret = secret_manager.findSecret(name);
+  if (secret == nullptr) {
+    throw EnvoyException(fmt::format("Static secret is not defined: {}", name));
+  }
+
+  auto resp = std::dynamic_pointer_cast<T>(secret);
+  if (resp == nullptr) {
+    throw EnvoyException(fmt::format("Invalid type of secret was returned for '{}'", name));
+  }
+
+  return resp;
+}
+
+} // namespace
+
 const std::string ContextConfigImpl::DEFAULT_CIPHER_SUITES =
     "[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305]:"
     "[ECDHE-RSA-AES128-GCM-SHA256|ECDHE-RSA-CHACHA20-POLY1305]:"
@@ -48,17 +69,9 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
         if (!config.tls_certificates().empty()) {
           return Config::DataSource::read(config.tls_certificates()[0].certificate_chain(), true);
         } else if (!config.tls_certificate_sds_secret_configs().empty()) {
-          auto static_secret =
-              secret_manager.findSecret(config.tls_certificate_sds_secret_configs()[0].name());
-
-          if (static_secret == nullptr) {
-            throw EnvoyException(
-                fmt::format("Static secret is not defined: {}",
-                            config.tls_certificate_sds_secret_configs()[0].name()));
-          }
-
-          return std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(static_secret)
-              ->certificateChain();
+          auto secret = findSecretAndCheckType<Ssl::TlsCertificateConfigImpl>(
+              secret_manager, config.tls_certificate_sds_secret_configs()[0].name());
+          return (secret) ? secret->certificateChain() : std::string("");
         } else {
           return std::string("");
         }
@@ -71,16 +84,9 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
         if (!config.tls_certificates().empty()) {
           return Config::DataSource::read(config.tls_certificates()[0].private_key(), true);
         } else if (!config.tls_certificate_sds_secret_configs().empty()) {
-          // static SDS secret
-          auto static_secret =
-              secret_manager.findSecret(config.tls_certificate_sds_secret_configs()[0].name());
-          if (static_secret == nullptr) {
-            throw EnvoyException(
-                fmt::format("Static secret is not defined: {}",
-                            config.tls_certificate_sds_secret_configs()[0].name()));
-          }
-          return std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(static_secret)
-              ->privateKey();
+          auto secret = findSecretAndCheckType<Ssl::TlsCertificateConfigImpl>(
+              secret_manager, config.tls_certificate_sds_secret_configs()[0].name());
+          return (secret) ? secret->privateKey() : std::string("");
         } else {
           return std::string("");
         }

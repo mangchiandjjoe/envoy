@@ -11,14 +11,14 @@ namespace Envoy {
 namespace Secret {
 
 /**
- * Secret contains certificate chain and private key.
+ * An instance of the secret.
  */
 class Secret {
 public:
   virtual ~Secret() {}
 
   /**
-   * @return protobuf message that generates the secret.
+   * @return protobuf message that initialized the secret.
    */
   virtual const Protobuf::Message& message() const PURE;
 

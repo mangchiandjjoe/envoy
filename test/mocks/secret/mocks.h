@@ -19,7 +19,7 @@ public:
   MockSecretManager();
   ~MockSecretManager();
 
-  MOCK_METHOD1(addOrUpdateStaticSecret, void(const SecretSharedPtr secret));
+  MOCK_METHOD1(addOrUpdateSecret, void(const SecretSharedPtr secret));
   MOCK_CONST_METHOD1(findSecret, const SecretSharedPtr(const std::string& name));
 };
 
