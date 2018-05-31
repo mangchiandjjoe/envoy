@@ -18,12 +18,12 @@ namespace {
 
 std::string readConfig(
     const envoy::api::v2::auth::CommonTlsContext& config, Secret::SecretManager& secret_manager,
-    const std::function<std::string(const envoy::api::v2::auth::CommonTlsContext& config)>&
+    const std::function<std::string(const envoy::api::v2::auth::TlsCertificate& tls_certificate)>&
         read_inline_config,
     const std::function<std::string(const std::shared_ptr<Ssl::TlsCertificateConfigImpl>& secret)>&
         read_secret) {
   if (!config.tls_certificates().empty()) {
-    return read_inline_config(config);
+    return read_inline_config(config.tls_certificates()[0]);
   } else if (!config.tls_certificate_sds_secret_configs().empty()) {
     auto name = config.tls_certificate_sds_secret_configs()[0].name();
     auto secret = secret_manager.findSecret<Ssl::TlsCertificateConfigImpl>(name);
@@ -70,8 +70,8 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           Config::DataSource::getPath(config.validation_context().crl())),
       cert_chain_(readConfig(
           config, secret_manager,
-          [](const envoy::api::v2::auth::CommonTlsContext& config) -> std::string {
-            return Config::DataSource::read(config.tls_certificates()[0].certificate_chain(), true);
+          [](const envoy::api::v2::auth::TlsCertificate& tls_certificate) -> std::string {
+            return Config::DataSource::read(tls_certificate.certificate_chain(), true);
           },
           [](const std::shared_ptr<Ssl::TlsCertificateConfigImpl>& secret) -> std::string {
             return secret->certificateChain();
@@ -82,8 +82,8 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
               : Config::DataSource::getPath(config.tls_certificates()[0].certificate_chain())),
       private_key_(readConfig(
           config, secret_manager,
-          [](const envoy::api::v2::auth::CommonTlsContext& config) -> std::string {
-            return Config::DataSource::read(config.tls_certificates()[0].private_key(), true);
+          [](const envoy::api::v2::auth::TlsCertificate& tls_certificate) -> std::string {
+            return Config::DataSource::read(tls_certificate.private_key(), true);
           },
           [](const std::shared_ptr<Ssl::TlsCertificateConfigImpl>& secret) -> std::string {
             return secret->privateKey();
