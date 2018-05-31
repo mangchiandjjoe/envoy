@@ -5,7 +5,6 @@
 #include <memory>
 #include <string>
 
-#include "envoy/common/exception.h"
 #include "envoy/secret/secret.h"
 
 namespace Envoy {
@@ -21,10 +20,11 @@ public:
   virtual ~SecretManager() {}
 
   /**
-   * @param secret a raw pointer of the derived class of Secret.
+   * add or update secret grouped by type.
+   * @param secret a shared_ptr of an implementation of Secret.
    */
-  template <typename T> void addOrUpdateSecret(T* secret) {
-    addOrUpdateSecret(typeid(T).name(), std::shared_ptr<Secret>(static_cast<Secret*>(secret)));
+  template <typename T> void addOrUpdateSecret(const SecretSharedPtr& secret) {
+    addOrUpdateSecret(typeid(T).name(), secret);
   }
 
   /**

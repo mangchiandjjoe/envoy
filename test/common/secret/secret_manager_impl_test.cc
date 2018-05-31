@@ -28,7 +28,8 @@ TEST_F(SecretManagerImplTest, WeightedClusterFallthroughConfig) {
 
   std::unique_ptr<SecretManager> secret_manager(new SecretManagerImpl());
 
-  secret_manager->addOrUpdateSecret(new Ssl::TlsCertificateConfigImpl(secret_config));
+  secret_manager->addOrUpdateSecret<Ssl::TlsCertificateConfigImpl>(
+      std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
 
   ASSERT_EQ(secret_manager->findSecret<Ssl::TlsCertificateConfigImpl>("undefined"), nullptr);
 

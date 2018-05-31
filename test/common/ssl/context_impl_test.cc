@@ -405,7 +405,8 @@ TEST(ClientContextConfigImplTest, StaticTlsCertificates) {
       "test/common/ssl/test_data/selfsigned_key.pem");
 
   std::unique_ptr<Secret::SecretManager> secret_manager(new Secret::SecretManagerImpl());
-  secret_manager->addOrUpdateSecret(new Ssl::TlsCertificateConfigImpl(secret_config));
+  secret_manager->addOrUpdateSecret<Ssl::TlsCertificateConfigImpl>(
+      std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
 
   envoy::api::v2::auth::UpstreamTlsContext tls_context;
   tls_context.mutable_common_tls_context()
@@ -431,7 +432,8 @@ TEST(ClientContextConfigImplTest, MissingStaticSecretTlsCertificates) {
 
   std::unique_ptr<Secret::SecretManager> secret_manager(new Secret::SecretManagerImpl());
 
-  secret_manager->addOrUpdateSecret(new Ssl::TlsCertificateConfigImpl(secret_config));
+  secret_manager->addOrUpdateSecret<Ssl::TlsCertificateConfigImpl>(
+      std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
 
   envoy::api::v2::auth::UpstreamTlsContext tls_context;
   tls_context.mutable_common_tls_context()
@@ -448,7 +450,7 @@ TEST(ClientContextConfigImplTest, DifferentSecretType) {
   envoy::api::v2::auth::Secret secret_config;
 
   std::unique_ptr<Secret::SecretManager> secret_manager(new Secret::SecretManagerImpl());
-  secret_manager->addOrUpdateSecret(new TestSecretImpl("test"));
+  secret_manager->addOrUpdateSecret<TestSecretImpl>(std::make_shared<TestSecretImpl>("test"));
 
   envoy::api::v2::auth::UpstreamTlsContext tls_context;
   tls_context.mutable_common_tls_context()
