@@ -120,5 +120,6 @@ envoy_cc_library(
 
 envoy_cc_test_library(
     name = "certs_test_expected_lib",
+    srcs = ["certs_test_expected.cc"],
     hdrs = ["certs_test_expected.h"],
 )
