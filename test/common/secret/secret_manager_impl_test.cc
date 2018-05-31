@@ -28,21 +28,20 @@ TEST_F(SecretManagerImplTest, WeightedClusterFallthroughConfig) {
 
   std::unique_ptr<SecretManager> secret_manager(new SecretManagerImpl());
 
-  secret_manager->addOrUpdateSecret<Ssl::TlsCertificateConfigImpl>(
-      std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
+  secret_manager->addOrUpdateSecret(std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
 
-  ASSERT_EQ(secret_manager->findSecret<Ssl::TlsCertificateConfigImpl>("undefined"), nullptr);
+  ASSERT_EQ(secret_manager->findSecret(Secret::SecretType::TLS_CERTIFICATE, "undefined"), nullptr);
 
-  ASSERT_NE(secret_manager->findSecret<Ssl::TlsCertificateConfigImpl>("abc.com"), nullptr);
+  ASSERT_NE(secret_manager->findSecret(Secret::SecretType::TLS_CERTIFICATE, "abc.com"), nullptr);
 
   EXPECT_EQ(Testdata::kExpectedCertificateChain,
             std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(
-                secret_manager->findSecret<Ssl::TlsCertificateConfigImpl>("abc.com"))
+                secret_manager->findSecret(Secret::SecretType::TLS_CERTIFICATE, "abc.com"))
                 ->certificateChain());
 
   EXPECT_EQ(Testdata::kExpectedPrivateKey,
             std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(
-                secret_manager->findSecret<Ssl::TlsCertificateConfigImpl>("abc.com"))
+                secret_manager->findSecret(Secret::SecretType::TLS_CERTIFICATE, "abc.com"))
                 ->privateKey());
 }
 

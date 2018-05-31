@@ -14,6 +14,8 @@ public:
   TlsCertificateConfigImpl(const envoy::api::v2::auth::Secret& config);
 
   const std::string& name() const override { return name_; }
+  SecretType type() const { return SecretType::TLS_CERTIFICATE; }
+
   const std::string& certificateChain() const { return certificate_chain_; }
   const std::string& privateKey() const { return private_key_; }
 

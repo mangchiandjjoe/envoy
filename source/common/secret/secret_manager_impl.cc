@@ -3,17 +3,17 @@
 namespace Envoy {
 namespace Secret {
 
-void SecretManagerImpl::addOrUpdateSecret(const std::string& type, const SecretSharedPtr& secret) {
-  auto type_secrets = secrets_.find(type);
+void SecretManagerImpl::addOrUpdateSecret(const SecretSharedPtr& secret) {
+  auto type_secrets = secrets_.find(secret->type());
   if (type_secrets == secrets_.end()) {
-    secrets_[type] = {};
-    type_secrets = secrets_.find(type);
+    secrets_[secret->type()] = {};
+    type_secrets = secrets_.find(secret->type());
   }
 
   type_secrets->second[secret->name()] = secret;
 }
 
-const SecretSharedPtr SecretManagerImpl::findSecret(const std::string& type,
+const SecretSharedPtr SecretManagerImpl::findSecret(Secret::SecretType type,
                                                     const std::string& name) const {
   auto type_secrets = secrets_.find(type);
   if (type_secrets == secrets_.end()) {

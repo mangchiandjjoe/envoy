@@ -17,10 +17,17 @@ class Secret {
 public:
   virtual ~Secret() {}
 
+  enum SecretType { TLS_CERTIFICATE };
+
   /**
    * @return a name of the secret.
    */
   virtual const std::string& name() const PURE;
+
+  /**
+   * @return a type of secret
+   */
+  virtual SecretType type() const PURE;
 };
 
 typedef std::shared_ptr<Secret> SecretSharedPtr;

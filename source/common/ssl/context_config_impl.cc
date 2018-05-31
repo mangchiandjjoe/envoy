@@ -26,11 +26,11 @@ std::string readConfig(
     return read_inline_config(config.tls_certificates()[0]);
   } else if (!config.tls_certificate_sds_secret_configs().empty()) {
     auto name = config.tls_certificate_sds_secret_configs()[0].name();
-    auto secret = secret_manager.findSecret<Ssl::TlsCertificateConfigImpl>(name);
+    auto secret = secret_manager.findSecret(Secret::Secret::SecretType::TLS_CERTIFICATE, name);
     if (!secret) {
       throw EnvoyException(fmt::format("Static secret is not defined: {}", name));
     }
-    return read_secret(secret);
+    return read_secret(std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(secret));
   } else {
     return std::string("");
   }

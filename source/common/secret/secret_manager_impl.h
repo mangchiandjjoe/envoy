@@ -15,11 +15,11 @@ public:
   SecretManagerImpl(){};
 
 private:
-  void addOrUpdateSecret(const std::string& type, const SecretSharedPtr& secret) override;
-  const SecretSharedPtr findSecret(const std::string& type, const std::string& name) const override;
+  void addOrUpdateSecret(const SecretSharedPtr& secret) override;
+  const SecretSharedPtr findSecret(Secret::SecretType type, const std::string& name) const override;
 
   // manages pair of name and secret grouped by type of secret.
-  std::unordered_map<std::string, std::unordered_map<std::string, SecretSharedPtr>> secrets_;
+  std::unordered_map<Secret::SecretType, std::unordered_map<std::string, SecretSharedPtr>> secrets_;
 };
 
 } // namespace Secret

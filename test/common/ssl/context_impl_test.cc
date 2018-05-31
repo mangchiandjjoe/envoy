@@ -22,15 +22,6 @@ namespace Ssl {
 
 class SslContextImplTest : public SslCertsTest {};
 
-class TestSecretImpl : public Secret::Secret {
-public:
-  TestSecretImpl(const std::string name) : name_(name) {}
-  const std::string& name() const override { return name_; }
-
-private:
-  const std::string name_;
-};
-
 TEST_F(SslContextImplTest, TestdNSNameMatching) {
   EXPECT_TRUE(ContextImpl::dNSNameMatch("lyft.com", "lyft.com"));
   EXPECT_TRUE(ContextImpl::dNSNameMatch("a.lyft.com", "*.lyft.com"));
@@ -405,8 +396,7 @@ TEST(ClientContextConfigImplTest, StaticTlsCertificates) {
       "test/common/ssl/test_data/selfsigned_key.pem");
 
   std::unique_ptr<Secret::SecretManager> secret_manager(new Secret::SecretManagerImpl());
-  secret_manager->addOrUpdateSecret<Ssl::TlsCertificateConfigImpl>(
-      std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
+  secret_manager->addOrUpdateSecret(std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
 
   envoy::api::v2::auth::UpstreamTlsContext tls_context;
   tls_context.mutable_common_tls_context()
@@ -432,8 +422,7 @@ TEST(ClientContextConfigImplTest, MissingStaticSecretTlsCertificates) {
 
   std::unique_ptr<Secret::SecretManager> secret_manager(new Secret::SecretManagerImpl());
 
-  secret_manager->addOrUpdateSecret<Ssl::TlsCertificateConfigImpl>(
-      std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
+  secret_manager->addOrUpdateSecret(std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
 
   envoy::api::v2::auth::UpstreamTlsContext tls_context;
   tls_context.mutable_common_tls_context()
@@ -444,23 +433,6 @@ TEST(ClientContextConfigImplTest, MissingStaticSecretTlsCertificates) {
   EXPECT_THROW_WITH_MESSAGE(
       ClientContextConfigImpl client_context_config(tls_context, *secret_manager.get()),
       EnvoyException, "Static secret is not defined: missing");
-}
-
-TEST(ClientContextConfigImplTest, DifferentSecretType) {
-  envoy::api::v2::auth::Secret secret_config;
-
-  std::unique_ptr<Secret::SecretManager> secret_manager(new Secret::SecretManagerImpl());
-  secret_manager->addOrUpdateSecret<TestSecretImpl>(std::make_shared<TestSecretImpl>("test"));
-
-  envoy::api::v2::auth::UpstreamTlsContext tls_context;
-  tls_context.mutable_common_tls_context()
-      ->mutable_tls_certificate_sds_secret_configs()
-      ->Add()
-      ->set_name("test");
-
-  EXPECT_THROW_WITH_MESSAGE(
-      ClientContextConfigImpl client_context_config(tls_context, *secret_manager.get()),
-      EnvoyException, "Static secret is not defined: test");
 }
 
 // Multiple TLS certificates are not yet supported, but one is expected for
