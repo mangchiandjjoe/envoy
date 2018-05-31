@@ -14,13 +14,11 @@ class SecretManagerImpl : public SecretManager, Logger::Loggable<Logger::Id::ups
 public:
   SecretManagerImpl(){};
 
-  void addOrUpdateSecret(SecretSharedPtr secret) override;
-  const SecretSharedPtr findSecret(const std::string& name) const override;
-
 private:
-  typedef std::unordered_map<std::string, SecretSharedPtr> SecretSharedPtrMap;
+  void addOrUpdateSecret(const std::string& type, const SecretSharedPtr& secret) override;
+  const SecretSharedPtr findSecret(const std::string& type, const std::string& name) const override;
 
-  SecretSharedPtrMap static_secrets_;
+  std::unordered_map<std::string, std::unordered_map<std::string, SecretSharedPtr>> secrets_;
 };
 
 } // namespace Secret

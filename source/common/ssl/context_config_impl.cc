@@ -16,21 +16,36 @@ namespace Ssl {
 
 namespace {
 
-template <typename T>
-const std::shared_ptr<T> findSecretAndCheckType(const Secret::SecretManager& secret_manager,
-                                                const std::string& name) {
-
-  auto secret = secret_manager.findSecret(name);
-  if (secret == nullptr) {
-    throw EnvoyException(fmt::format("Static secret is not defined: {}", name));
+const std::string readCrtificateChain(const envoy::api::v2::auth::CommonTlsContext& config,
+                                      Secret::SecretManager& secret_manager) {
+  if (!config.tls_certificates().empty()) {
+    return Config::DataSource::read(config.tls_certificates()[0].certificate_chain(), true);
+  } else if (!config.tls_certificate_sds_secret_configs().empty()) {
+    auto name = config.tls_certificate_sds_secret_configs()[0].name();
+    auto secret = secret_manager.findSecret<Ssl::TlsCertificateConfigImpl>(name);
+    if (!secret) {
+      throw EnvoyException(fmt::format("Static secret is not defined: {}", name));
+    }
+    return secret->certificateChain();
+  } else {
+    return std::string("");
   }
+}
 
-  auto resp = std::dynamic_pointer_cast<T>(secret);
-  if (resp == nullptr) {
-    throw EnvoyException(fmt::format("Invalid type of secret was returned for '{}'", name));
+const std::string readPrivateKey(const envoy::api::v2::auth::CommonTlsContext& config,
+                                 Secret::SecretManager& secret_manager) {
+  if (!config.tls_certificates().empty()) {
+    return Config::DataSource::read(config.tls_certificates()[0].private_key(), true);
+  } else if (!config.tls_certificate_sds_secret_configs().empty()) {
+    auto name = config.tls_certificate_sds_secret_configs()[0].name();
+    auto secret = secret_manager.findSecret<Ssl::TlsCertificateConfigImpl>(name);
+    if (!secret) {
+      throw EnvoyException(fmt::format("Static secret is not defined: {}", name));
+    }
+    return secret->privateKey();
+  } else {
+    return std::string("");
   }
-
-  return resp;
 }
 
 } // namespace
@@ -65,32 +80,12 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           Config::DataSource::read(config.validation_context().crl(), true)),
       certificate_revocation_list_path_(
           Config::DataSource::getPath(config.validation_context().crl())),
-      cert_chain_([&config, &secret_manager] {
-        if (!config.tls_certificates().empty()) {
-          return Config::DataSource::read(config.tls_certificates()[0].certificate_chain(), true);
-        } else if (!config.tls_certificate_sds_secret_configs().empty()) {
-          auto secret = findSecretAndCheckType<Ssl::TlsCertificateConfigImpl>(
-              secret_manager, config.tls_certificate_sds_secret_configs()[0].name());
-          return (secret) ? secret->certificateChain() : std::string("");
-        } else {
-          return std::string("");
-        }
-      }()),
+      cert_chain_(readCrtificateChain(config, secret_manager)),
       cert_chain_path_(
           config.tls_certificates().empty()
               ? ""
               : Config::DataSource::getPath(config.tls_certificates()[0].certificate_chain())),
-      private_key_([&config, &secret_manager] {
-        if (!config.tls_certificates().empty()) {
-          return Config::DataSource::read(config.tls_certificates()[0].private_key(), true);
-        } else if (!config.tls_certificate_sds_secret_configs().empty()) {
-          auto secret = findSecretAndCheckType<Ssl::TlsCertificateConfigImpl>(
-              secret_manager, config.tls_certificate_sds_secret_configs()[0].name());
-          return (secret) ? secret->privateKey() : std::string("");
-        } else {
-          return std::string("");
-        }
-      }()),
+      private_key_(readPrivateKey(config, secret_manager)),
       private_key_path_(
           config.tls_certificates().empty()
               ? ""

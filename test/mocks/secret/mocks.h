@@ -19,8 +19,9 @@ public:
   MockSecretManager();
   ~MockSecretManager();
 
-  MOCK_METHOD1(addOrUpdateSecret, void(const SecretSharedPtr secret));
-  MOCK_CONST_METHOD1(findSecret, const SecretSharedPtr(const std::string& name));
+  MOCK_METHOD2(addOrUpdateSecret, void(const std::string& type, const SecretSharedPtr& secret));
+  MOCK_CONST_METHOD2(findSecret,
+                     const SecretSharedPtr(const std::string& type, const std::string& name));
 };
 
 } // namespace Secret
