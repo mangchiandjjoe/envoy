@@ -4,11 +4,13 @@ Version history
 1.7.0 (Pending)
 ===============
 
-* access log: ability to log response trailers
-* access log: ability to format START_TIME
+* access log: added ability to log response trailers.
+* access log: added ability to format START_TIME.
 * access log: added DYNAMIC_METADATA :ref:`access log formatter <config_access_log_format>`.
 * access log: added :ref:`HeaderFilter <envoy_api_msg_config.filter.accesslog.v2.HeaderFilter>`
-  to filter logs based on request headers
+  to filter logs based on request headers.
+* access log: gRPC Access Log Service (ALS) support added for :ref:`HTTP access logs
+  <envoy_api_msg_config.accesslog.v2.HttpGrpcAccessLogConfig>`.
 * admin: added :http:get:`/config_dump` for dumping the current configuration and associated xDS
   version information (if applicable).
 * admin: added :http:get:`/stats/prometheus` as an alternative endpoint for getting stats in prometheus format.
@@ -70,12 +72,17 @@ Version history
 * logger: added the ability to optionally set the log format via the :option:`--log-format` option.
 * logger: all :ref:`logging levels <operations_admin_interface_logging>` can be configured
   at run-time: trace debug info warning error critical.
-* router: The behavior of per-try timeouts have changed in the case where a portion of the response has 
-  already been proxied downstream when the timeout occurs. Previously, the response would be reset 
-  leading to either an HTTP/2 reset or an HTTP/1 closed connection and a partial response. Now, the 
-  timeout will be ignored and the response will continue to proxy up to the global request timeout. 
+* rbac http filter: a :ref:`role-based access control http filter <config_http_filters_rbac>` has been added.
+* router: The behavior of per-try timeouts have changed in the case where a portion of the response has
+  already been proxied downstream when the timeout occurs. Previously, the response would be reset
+  leading to either an HTTP/2 reset or an HTTP/1 closed connection and a partial response. Now, the
+  timeout will be ignored and the response will continue to proxy up to the global request timeout.
 * router: changed the behavior of :ref:`source IP routing <envoy_api_field_route.RouteAction.HashPolicy.ConnectionProperties.source_ip>`
   to ignore the source port.
+* router: added an :ref:`present_match <envoy_api_field_route.HeaderMatcher.present_match>` match type
+  to explicitly match based on a header's presence.
+* router: added an :ref:`invert_match <envoy_api_field_route.HeaderMatcher.invert_match>` config option
+  which supports inverting all other match types to match based on headers which are not a desired value.
 * router: allow :ref:`cookie routing <envoy_api_msg_route.RouteAction.HashPolicy.Cookie>` to
   generate session cookies.
 * sockets: added :ref:`capture transport socket extension <operations_traffic_capture>` to support

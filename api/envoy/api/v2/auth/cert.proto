@@ -147,7 +147,7 @@ message CertificateValidationContext {
   //
   // Both of those formats are acceptable.
   repeated string verify_certificate_hash = 2
-      [(validate.rules).repeated.items.string = {min_bytes: 64, max_bytes: 95}];
+      [(validate.rules).repeated .items.string = {min_bytes: 64, max_bytes: 95}];
 
   // If specified, Envoy will verify (pin) base64-encoded SHA-256 hash of
   // the Subject Public Key Information (SPKI) of the presented certificate.
@@ -190,8 +190,13 @@ message CommonTlsContext {
   // [#not-implemented-hide:]
   repeated SdsSecretConfig tls_certificate_sds_secret_configs = 6;
 
-  // How to validate peer certificates.
-  CertificateValidationContext validation_context = 3;
+  oneof validation_context_type {
+    // How to validate peer certificates.
+    CertificateValidationContext validation_context = 3;
+
+    // [#not-implemented-hide:]
+    SdsSecretConfig validation_context_sds_secret_config = 7;
+  }
 
   // Supplies the list of ALPN protocols that the listener should expose. In
   // practice this is likely to be set to one of two values (see the
@@ -262,5 +267,6 @@ message Secret {
   oneof type {
     TlsCertificate tls_certificate = 2;
     TlsSessionTicketKeys session_ticket_keys = 3;
+    CertificateValidationContext validation_context = 4;
   }
 }
