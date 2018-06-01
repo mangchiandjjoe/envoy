@@ -18,8 +18,6 @@ public:
   const SecretSharedPtr findSecret(Secret::SecretType type, const std::string& name) const override;
 
 private:
-  typedef std::unordered_map<std::string, SecretSharedPtr> NameSecretSharedPtrMap;
-
   // manages pair of name and secret grouped by type of secret.
   std::unordered_map<Secret::SecretType, std::unordered_map<std::string, SecretSharedPtr>,
                      std::hash<int>>
