@@ -22,6 +22,7 @@ public:
   MOCK_METHOD1(addOrUpdateSecret, void(const SecretSharedPtr& secret));
   MOCK_CONST_METHOD2(findSecret,
                      const SecretSharedPtr(Secret::SecretType type, const std::string& name));
+  MOCK_CONST_METHOD1(loadSecret, const SecretSharedPtr(const envoy::api::v2::auth::Secret& secret));
 };
 
 } // namespace Secret

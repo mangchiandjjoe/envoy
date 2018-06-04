@@ -1,5 +1,9 @@
 #include "common/secret/secret_manager_impl.h"
 
+#include "envoy/common/exception.h"
+
+#include "common/ssl/tls_certificate_config_impl.h"
+
 namespace Envoy {
 namespace Secret {
 
@@ -20,6 +24,17 @@ const SecretSharedPtr SecretManagerImpl::findSecret(Secret::SecretType type,
   }
 
   return secret->second;
+}
+
+const SecretSharedPtr
+SecretManagerImpl::loadSecret(const envoy::api::v2::auth::Secret& secret) const {
+
+  switch (secret.type_case()) {
+  case envoy::api::v2::auth::Secret::TypeCase::kTlsCertificate:
+    return std::make_shared<Ssl::TlsCertificateConfigImpl>(secret);
+  default:
+    throw EnvoyException("Secret type not implemented");
+  }
 }
 
 } // namespace Secret

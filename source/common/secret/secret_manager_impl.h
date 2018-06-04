@@ -16,6 +16,7 @@ public:
 
   void addOrUpdateSecret(const SecretSharedPtr& secret) override;
   const SecretSharedPtr findSecret(Secret::SecretType type, const std::string& name) const override;
+  const SecretSharedPtr loadSecret(const envoy::api::v2::auth::Secret& secret) const override;
 
 private:
   // manages pair of name and secret grouped by type of secret.
