@@ -136,7 +136,8 @@ ClientContextConfigImpl::ClientContextConfigImpl(
     throw EnvoyException("SNI names containing NULL-byte are not allowed");
   }
   // TODO(PiotrSikora): Support multiple TLS certificates.
-  if (config.common_tls_context().tls_certificates().size() > 1) {
+  if ((config.common_tls_context().tls_certificates().size() +
+       config.common_tls_context().tls_certificate_sds_secret_configs().size()) > 1) {
     throw EnvoyException("Multiple TLS certificates are not supported for client contexts");
   }
 }
