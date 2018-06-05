@@ -25,9 +25,6 @@ public:
   const SecretSharedPtr findSecret(Secret::SecretType type, const std::string& sdsConfigSourceHash,
                                    const std::string& name) const override;
 
-  std::size_t removeSecret(Secret::SecretType type, const std::string& sdsConfigSourceHash,
-                           const std::string& name) override;
-
   std::string
   addOrUpdateSdsService(const envoy::api::v2::core::ConfigSource& sdsConfigSource) override;
 

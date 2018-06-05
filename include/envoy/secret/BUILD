@@ -22,7 +22,6 @@ envoy_cc_library(
     name = "secret_manager_interface",
     hdrs = ["secret_manager.h"],
     deps = [
-        ":secret_callbacks_interface",
         ":secret_interface",
         "//source/common/json:json_loader_lib",
         "@envoy_api//envoy/api/v2/auth:cert_cc",

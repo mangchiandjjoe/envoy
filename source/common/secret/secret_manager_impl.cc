@@ -65,24 +65,6 @@ const SecretSharedPtr SecretManagerImpl::findSecret(Secret::SecretType type,
   return name_it->second;
 }
 
-std::size_t SecretManagerImpl::removeSecret(Secret::SecretType type,
-                                            const std::string& sdsConfigSourceHash,
-                                            const std::string& name) {
-  std::unique_lock<std::shared_timed_mutex> lhs(secrets_mutex_);
-
-  auto type_it = secrets_.find(type);
-  if (type_it == secrets_.end()) {
-    return 0;
-  }
-
-  auto config_source_it = type_it->second.find(sdsConfigSourceHash);
-  if (config_source_it == type_it->second.end()) {
-    return 0;
-  }
-
-  return config_source_it->second.erase(name);
-}
-
 std::string SecretManagerImpl::addOrUpdateSdsService(
     const envoy::api::v2::core::ConfigSource& sdsConfigSource) {
   std::unique_lock<std::shared_timed_mutex> lhs(sds_api_mutex_);

@@ -43,15 +43,6 @@ public:
                                            const std::string& name) const PURE;
 
   /**
-   * @param sdsConfigSourceHash hash string of normalized config source.
-   * @param name a name of the secret.
-   * @return  The number of elements erased.
-   */
-  virtual std::size_t removeSecret(Secret::SecretType type,
-                                           const std::string& sdsConfigSourceHash,
-                                           const std::string& name) PURE;
-
-  /**
    * Add or update SDS config source. SecretManager start downloading secrets from registered
    * config source.
    *
