@@ -69,7 +69,6 @@ envoy_cc_library(
     name = "transport_socket_interface",
     hdrs = ["transport_socket.h"],
     deps = [
-        "//include/envoy/secret:secret_callbacks_interface",
         "//include/envoy/ssl:connection_interface",
     ],
 )

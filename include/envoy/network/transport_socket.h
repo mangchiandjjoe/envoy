@@ -2,7 +2,6 @@
 
 #include "envoy/buffer/buffer.h"
 #include "envoy/common/pure.h"
-#include "envoy/secret/secret_callbacks.h"
 #include "envoy/ssl/connection.h"
 
 namespace Envoy {
@@ -145,7 +144,7 @@ typedef std::unique_ptr<TransportSocket> TransportSocketPtr;
 /**
  * A factory for creating transport socket. It will be associated to filter chains and clusters.
  */
-class TransportSocketFactory : public Secret::SecretCallbacks {
+class TransportSocketFactory {
 public:
   virtual ~TransportSocketFactory() {}
 
@@ -158,8 +157,6 @@ public:
    * @return Network::TransportSocketPtr a transport socket to be passed to connection.
    */
   virtual TransportSocketPtr createTransportSocket() const PURE;
-
-  virtual void onAddOrUpdateSecret() PURE;
 };
 
 typedef std::unique_ptr<TransportSocketFactory> TransportSocketFactoryPtr;

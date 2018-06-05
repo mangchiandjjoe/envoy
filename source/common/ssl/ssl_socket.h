@@ -5,6 +5,7 @@
 
 #include "envoy/network/connection.h"
 #include "envoy/network/transport_socket.h"
+#include "envoy/secret/secret_callbacks.h"
 
 #include "common/common/logger.h"
 #include "common/ssl/context_impl.h"
@@ -65,6 +66,7 @@ private:
 };
 
 class ClientSslSocketFactory : public Network::TransportSocketFactory,
+                               public Secret::SecretCallbacks,
                                Logger::Loggable<Logger::Id::config> {
 public:
   ClientSslSocketFactory(const std::unique_ptr<ClientContextConfig> config,
@@ -81,6 +83,7 @@ private:
 };
 
 class ServerSslSocketFactory : public Network::TransportSocketFactory,
+                               public Secret::SecretCallbacks,
                                Logger::Loggable<Logger::Id::config> {
 public:
   ServerSslSocketFactory(const std::unique_ptr<ServerContextConfig> config,

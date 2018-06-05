@@ -1,7 +1,9 @@
 #include "envoy/api/v2/auth/cert.pb.h"
 
-#include "common/secret/secret_impl.h"
 #include "common/secret/secret_manager_impl.h"
+#include "common/ssl/tls_certificate_config_impl.h"
+
+#include "test/mocks/server/mocks.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -56,24 +58,31 @@ class SecretManagerImplTest : public testing::Test {};
 TEST_F(SecretManagerImplTest, WeightedClusterFallthroughConfig) {
   envoy::api::v2::auth::Secret secret_config;
 
-  secret_config.set_name("abc.com");
-  auto tls_certificate = secret_config.mutable_tls_certificate();
-  tls_certificate->mutable_certificate_chain()->set_filename(
-      "test/config/integration/certs/servercert.pem");
-  tls_certificate->mutable_private_key()->set_filename(
-      "test/config/integration/certs/serverkey.pem");
+  std::string yaml = R"EOF(
+name: "abc.com"
+tls_certificate:
+ certificate_chain:
+   filename: "test/common/ssl/test_data/selfsigned_cert.pem"
+ private_key:
+   filename: "test/common/ssl/test_data/selfsigned_key.pem"
+)EOF";
+  MessageUtil::loadFromYaml(yaml, secret_config);
 
-  SecretSharedPtr secret(new SecretImpl(secret_config));
+  Server::MockInstance server;
 
-  SecretManagerImpl secret_manager;
-  secret_manager.addOrUpdateStaticSecret(secret);
+  SecretManagerImpl secret_manager(server);
+  secret_manager.addOrUpdateSecret("", secret_config);
 
-  ASSERT_EQ(secret_manager.staticSecret("undefined"), nullptr);
+  ASSERT_EQ(secret_manager.findSecret(Secret::TLS_CERTIFICATE, "", "undefined"), nullptr);
 
-  ASSERT_NE(secret_manager.staticSecret("abc.com"), nullptr);
+  ASSERT_NE(secret_manager.findSecret(Secret::TLS_CERTIFICATE, "", "abc.com"), nullptr);
 
-  EXPECT_EQ(kExpectedCertificateChain, secret_manager.staticSecret("abc.com")->certificateChain());
-  EXPECT_EQ(kExpectedPrivateKey, secret_manager.staticSecret("abc.com")->privateKey());
+  auto secret = secret_manager.findSecret(Secret::TLS_CERTIFICATE, "", "abc.com");
+
+  EXPECT_EQ(kExpectedCertificateChain,
+            std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(secret)->certificateChain());
+  EXPECT_EQ(kExpectedPrivateKey,
+            std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(secret)->privateKey());
 }
 
 } // namespace

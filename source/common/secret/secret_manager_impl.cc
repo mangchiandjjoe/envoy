@@ -1,6 +1,7 @@
 #include "common/secret/secret_manager_impl.h"
 
 #include "common/common/logger.h"
+#include "common/secret/secret_manager_util.h"
 #include "common/ssl/tls_certificate_config_impl.h"
 
 namespace Envoy {
@@ -67,7 +68,7 @@ std::string SecretManagerImpl::addOrUpdateSdsService(
     const envoy::api::v2::core::ConfigSource& sdsConfigSource) {
   std::unique_lock<std::shared_timed_mutex> lhs(sds_api_mutex_);
 
-  auto hash = SecretManager::configSourceHash(sdsConfigSource);
+  auto hash = SecretManagerUtil::configSourceHash(sdsConfigSource);
   if (sds_apis_.find(hash) != sds_apis_.end()) {
     return hash;
   }

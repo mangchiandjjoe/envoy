@@ -24,8 +24,8 @@ Network::TransportSocketFactoryPtr UpstreamSslSocketFactory::createTransportSock
   auto hash = upstream_config->sdsConfigShourceHash();
   auto name = upstream_config->sdsSecretName();
 
-  Network::TransportSocketFactoryPtr tsf = std::make_unique<Ssl::ClientSslSocketFactory>(
-      std::move(upstream_config), context.sslContextManager(), context.statsScope());
+  std::unique_ptr<Ssl::ClientSslSocketFactory> tsf(new Ssl::ClientSslSocketFactory(
+      std::move(upstream_config), context.sslContextManager(), context.statsScope()));
 
   if (!hash.empty()) {
     context.sslContextManager().secretManager().registerSecretCallbacks(hash, name, *tsf.get());
@@ -53,9 +53,9 @@ Network::TransportSocketFactoryPtr DownstreamSslSocketFactory::createTransportSo
   auto hash = downstream_config->sdsConfigShourceHash();
   auto name = downstream_config->sdsSecretName();
 
-  Network::TransportSocketFactoryPtr tsf = std::make_unique<Ssl::ServerSslSocketFactory>(
-      std::move(downstream_config), context.sslContextManager(), context.statsScope(),
-      server_names);
+  std::unique_ptr<Ssl::ServerSslSocketFactory> tsf(
+      new Ssl::ServerSslSocketFactory(std::move(downstream_config), context.sslContextManager(),
+                                      context.statsScope(), server_names));
 
   if (!hash.empty()) {
     context.sslContextManager().secretManager().registerSecretCallbacks(hash, name, *tsf.get());

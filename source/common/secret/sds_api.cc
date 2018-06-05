@@ -10,6 +10,7 @@
 #include "common/config/resources.h"
 #include "common/config/subscription_factory.h"
 #include "common/secret/sds_subscription.h"
+#include "common/secret/secret_manager_util.h"
 
 namespace Envoy {
 namespace Secret {
@@ -17,7 +18,7 @@ namespace Secret {
 SdsApi::SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
                SecretManager& secret_manager)
     : server_(server), sds_config_(sds_config),
-      sds_config_source_hash_(SecretManager::configSourceHash(sds_config)),
+      sds_config_source_hash_(SecretManagerUtil::configSourceHash(sds_config)),
       secret_manager_(secret_manager) {
   server_.initManager().registerTarget(*this);
 }

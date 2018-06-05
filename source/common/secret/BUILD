@@ -9,11 +9,21 @@ load(
 envoy_package()
 
 envoy_cc_library(
+    name = "secret_manager_util",
+    hdrs = ["secret_manager_util.h"],
+    deps = [
+        "//source/common/json:json_loader_lib",
+        "@envoy_api//envoy/api/v2/core:config_source_cc",
+    ],
+)
+
+envoy_cc_library(
     name = "secret_manager_impl_lib",
     srcs = ["secret_manager_impl.cc"],
     hdrs = ["secret_manager_impl.h"],
     deps = [
         ":sds_api_lib",
+        ":secret_manager_util",
         "//include/envoy/secret:secret_manager_interface",
         "//include/envoy/server:instance_interface",
         "//source/common/ssl:tls_certificate_config_impl_lib",
@@ -26,6 +36,7 @@ envoy_cc_library(
     hdrs = ["sds_api.h"],
     deps = [
         ":sds_subscription_lib",
+        ":secret_manager_util",
         "//include/envoy/config:subscription_interface",
         "//include/envoy/secret:secret_interface",
         "//include/envoy/secret:secret_manager_interface",
