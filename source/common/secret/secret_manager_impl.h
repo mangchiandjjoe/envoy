@@ -14,7 +14,7 @@ class SecretManagerImpl : public SecretManager, Logger::Loggable<Logger::Id::ups
 public:
   SecretManagerImpl(){};
 
-  void addOrUpdateSecret(const SecretSharedPtr& secret) override;
+  void addOrUpdateSecret(const envoy::api::v2::auth::Secret& secret) override;
   const SecretSharedPtr findSecret(Secret::SecretType type, const std::string& name) const override;
 
 private:

@@ -5,8 +5,6 @@
 
 #include "envoy/common/pure.h"
 
-#include "common/protobuf/protobuf.h"
-
 namespace Envoy {
 namespace Secret {
 

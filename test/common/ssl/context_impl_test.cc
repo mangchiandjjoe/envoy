@@ -388,15 +388,19 @@ TEST(ClientContextConfigImplTest, MultipleTlsCertificates) {
 TEST(ClientContextConfigImplTest, StaticTlsCertificates) {
   envoy::api::v2::auth::Secret secret_config;
 
-  secret_config.set_name("abc.com");
-  auto tls_certificate = secret_config.mutable_tls_certificate();
-  tls_certificate->mutable_certificate_chain()->set_filename(
-      "test/common/ssl/test_data/selfsigned_cert.pem");
-  tls_certificate->mutable_private_key()->set_filename(
-      "test/common/ssl/test_data/selfsigned_key.pem");
+  std::string yaml = R"EOF(
+name: "abc.com"
+tls_certificate:
+  certificate_chain:
+    filename: "test/common/ssl/test_data/selfsigned_cert.pem"
+  private_key:
+    filename: "test/common/ssl/test_data/selfsigned_key.pem"
+)EOF";
+
+  MessageUtil::loadFromYaml(yaml, secret_config);
 
   std::unique_ptr<Secret::SecretManager> secret_manager(new Secret::SecretManagerImpl());
-  secret_manager->addOrUpdateSecret(std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
+  secret_manager->addOrUpdateSecret(secret_config);
 
   envoy::api::v2::auth::UpstreamTlsContext tls_context;
   tls_context.mutable_common_tls_context()
@@ -413,16 +417,20 @@ TEST(ClientContextConfigImplTest, StaticTlsCertificates) {
 TEST(ClientContextConfigImplTest, MissingStaticSecretTlsCertificates) {
   envoy::api::v2::auth::Secret secret_config;
 
-  secret_config.set_name("abc.com");
-  auto tls_certificate = secret_config.mutable_tls_certificate();
-  tls_certificate->mutable_certificate_chain()->set_filename(
-      "test/common/ssl/test_data/selfsigned_cert.pem");
-  tls_certificate->mutable_private_key()->set_filename(
-      "test/common/ssl/test_data/selfsigned_key.pem");
+  std::string yaml = R"EOF(
+name: "abc.com"
+tls_certificate:
+  certificate_chain:
+    filename: "test/common/ssl/test_data/selfsigned_cert.pem"
+  private_key:
+    filename: "test/common/ssl/test_data/selfsigned_key.pem"
+)EOF";
+
+  MessageUtil::loadFromYaml(yaml, secret_config);
 
   std::unique_ptr<Secret::SecretManager> secret_manager(new Secret::SecretManagerImpl());
 
-  secret_manager->addOrUpdateSecret(std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config));
+  secret_manager->addOrUpdateSecret(secret_config);
 
   envoy::api::v2::auth::UpstreamTlsContext tls_context;
   tls_context.mutable_common_tls_context()
