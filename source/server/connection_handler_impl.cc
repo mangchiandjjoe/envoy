@@ -196,10 +196,11 @@ void ConnectionHandlerImpl::ActiveListener::newConnection(Network::ConnectionSoc
   }
 
   auto transport_socket = filter_chain->transportSocketFactory().createTransportSocket();
-  if(!transport_socket) {
+  if (!transport_socket) {
     ENVOY_LOG_TO_LOGGER(parent_.logger_, debug,
                         "closing connection: transport socket was not created yet");
-    stats_.no_filter_chain_match_.inc();
+    // TODO(jaebong) add stats
+    // stats_.no_filter_chain_match_.inc();
     socket->close();
     return;
   }

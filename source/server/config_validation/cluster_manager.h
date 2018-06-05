@@ -21,8 +21,7 @@ public:
                                   Network::DnsResolverSharedPtr dns_resolver,
                                   Ssl::ContextManager& ssl_context_manager,
                                   Event::Dispatcher& main_thread_dispatcher,
-                                  const LocalInfo::LocalInfo& local_info,
-                                  Secret::SecretManager& secret_manager);
+                                  const LocalInfo::LocalInfo& local_info);
 
   ClusterManagerPtr
   clusterManagerFromProto(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,
@@ -35,9 +34,6 @@ public:
   CdsApiPtr createCds(const envoy::api::v2::core::ConfigSource& cds_config,
                       const absl::optional<envoy::api::v2::core::ConfigSource>& eds_config,
                       ClusterManager& cm) override;
-
-private:
-  Secret::SecretManager& secret_manager_;
 };
 
 /**
@@ -50,7 +46,7 @@ public:
                            ThreadLocal::Instance& tls, Runtime::Loader& runtime,
                            Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info,
                            AccessLog::AccessLogManager& log_manager, Event::Dispatcher& dispatcher,
-                           Server::Admin& admin, Secret::SecretManager& secret_manager);
+                           Server::Admin& admin);
 
   Http::ConnectionPool::Instance* httpConnPoolForCluster(const std::string&, ResourcePriority,
                                                          Http::Protocol,
@@ -63,7 +59,6 @@ private:
   // no internal state -- we might as well just keep one and hand out references
   // to it.
   Http::ValidationAsyncClient async_client_;
-  Secret::SecretManager& secret_manager_;
 };
 
 } // namespace Upstream

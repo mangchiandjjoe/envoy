@@ -171,14 +171,13 @@ ClusterManagerImpl::ClusterManagerImpl(const envoy::config::bootstrap::v2::Boots
                                        const LocalInfo::LocalInfo& local_info,
                                        AccessLog::AccessLogManager& log_manager,
                                        Event::Dispatcher& main_thread_dispatcher,
-                                       Server::Admin& admin, Secret::SecretManager& secret_manager)
+                                       Server::Admin& admin)
     : factory_(factory), runtime_(runtime), stats_(stats), tls_(tls.allocateSlot()),
       random_(random), bind_config_(bootstrap.cluster_manager().upstream_bind_config()),
       local_info_(local_info), cm_stats_(generateStats(stats)),
       init_helper_([this](Cluster& cluster) { onClusterInit(cluster); }),
       config_tracker_entry_(
-          admin.getConfigTracker().add("clusters", [this] { return dumpClusterConfigs(); })),
-      secret_manager_(secret_manager) {
+          admin.getConfigTracker().add("clusters", [this] { return dumpClusterConfigs(); })) {
   async_client_manager_ = std::make_unique<Grpc::AsyncClientManagerImpl>(*this, tls);
   const auto& cm_config = bootstrap.cluster_manager();
   if (cm_config.has_outlier_detection()) {
@@ -594,10 +593,6 @@ Host::CreateConnectionData ClusterManagerImpl::tcpConnForCluster(const std::stri
   if (logical_host) {
     auto conn_info =
         logical_host->createConnection(cluster_manager.thread_local_dispatcher_, nullptr);
-    if(!conn_info.connection_.get()) {
-      // TODO(jaebong) transport socket was not created yet by sds dynamic secret
-      return {nullptr, nullptr};
-    }
 
     if ((entry->second->cluster_info_->features() &
          ClusterInfo::Features::CLOSE_CONNECTIONS_ON_HOST_HEALTH_FAILURE) &&
@@ -948,7 +943,7 @@ ClusterManagerPtr ProdClusterManagerFactory::clusterManagerFromProto(
     Server::Admin& admin) {
   return ClusterManagerPtr{new ClusterManagerImpl(bootstrap, *this, stats, tls, runtime, random,
                                                   local_info, log_manager, main_thread_dispatcher_,
-                                                  admin, ssl_context_manager_.secretManager())};
+                                                  admin)};
 }
 
 Http::ConnectionPool::InstancePtr ProdClusterManagerFactory::allocateConnPool(

@@ -131,16 +131,6 @@ private:
     uint64_t workers_pending_removal_;
   };
 
-  struct PendingListenerInfo {
-    const envoy::api::v2::Listener config;
-    const std::string version_info;
-    const bool modifiable;
-
-    PendingListenerInfo(const envoy::api::v2::Listener& config_, const std::string& version_info_,
-                        bool modifiable_)
-        : config(config_), version_info(version_info_), modifiable(modifiable_) {}
-  };
-
   void addListenerToWorker(Worker& worker, ListenerImpl& listener);
   ProtobufTypes::MessagePtr dumpListenerConfigs();
   static ListenerManagerStats generateStats(Stats::Scope& scope);
@@ -184,9 +174,6 @@ private:
   ListenerManagerStats stats_;
   ConfigTracker::EntryOwnerPtr config_tracker_entry_;
   LdsApiPtr lds_api_;
-
-  mutable std::shared_timed_mutex pending_listeners_mutex_;
-  std::vector<PendingListenerInfo> pending_listeners_;
 };
 
 // TODO(mattklein123): Consider getting rid of pre-worker start and post-worker start code by
@@ -216,7 +203,7 @@ public:
    */
   ListenerImpl(const envoy::api::v2::Listener& config, const std::string& version_info,
                ListenerManagerImpl& parent, const std::string& name, bool modifiable,
-               bool workers_started, uint64_t hash, Secret::SecretManager& secret_manager);
+               bool workers_started, uint64_t hash);
   ~ListenerImpl();
 
   /**
@@ -367,7 +354,6 @@ private:
   const envoy::api::v2::Listener config_;
   const std::string version_info_;
   Network::Socket::OptionsSharedPtr listen_socket_options_;
-  Secret::SecretManager& secret_manager_;
 };
 
 class FilterChainImpl : public Network::FilterChain {

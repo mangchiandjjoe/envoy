@@ -132,7 +132,7 @@ HostImpl::createConnection(Event::Dispatcher& dispatcher, const ClusterInfo& clu
   }
 
   auto transport_socket = cluster.transportSocketFactory().createTransportSocket();
-  if(!transport_socket) {
+  if (!transport_socket) {
     return nullptr;
   }
 
