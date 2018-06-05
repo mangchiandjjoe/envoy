@@ -41,7 +41,7 @@ private:
 
   Server::Instance& server_;
   const envoy::api::v2::core::ConfigSource sds_config_;
-  const uint64_t sds_config_source_hash_;
+  const std::string sds_config_source_hash_;
   SecretManager& secret_manager_;
   std::unique_ptr<Config::Subscription<envoy::api::v2::auth::Secret>> subscription_;
   std::function<void()> initialize_callback_;

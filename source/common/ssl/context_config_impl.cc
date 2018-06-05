@@ -1,16 +1,68 @@
 #include "common/ssl/context_config_impl.h"
 
+#include <memory>
 #include <string>
 
 #include "common/common/assert.h"
 #include "common/config/datasource.h"
 #include "common/config/tls_context_json.h"
 #include "common/protobuf/utility.h"
+#include "common/ssl/tls_certificate_config_impl.h"
 
 #include "openssl/ssl.h"
 
 namespace Envoy {
 namespace Ssl {
+
+namespace {
+
+std::string readSdsSecretName(const envoy::api::v2::auth::CommonTlsContext& config) {
+  return (!config.tls_certificate_sds_secret_configs().empty())
+             ? config.tls_certificate_sds_secret_configs()[0].name()
+             : "";
+}
+
+std::string readConfigSourceHash(const envoy::api::v2::auth::CommonTlsContext& config,
+                                 Secret::SecretManager& secret_manager) {
+  return (!config.tls_certificate_sds_secret_configs().empty() &&
+          config.tls_certificate_sds_secret_configs()[0].has_sds_config())
+             ? secret_manager.addOrUpdateSdsService(
+                   config.tls_certificate_sds_secret_configs()[0].sds_config())
+             : "";
+}
+
+std::string readConfig(
+    const envoy::api::v2::auth::CommonTlsContext& config, Secret::SecretManager& secret_manager,
+    const std::string config_source_hash, const std::string secret_name,
+    const std::function<std::string(const envoy::api::v2::auth::TlsCertificate& tls_certificate)>&
+        read_inline_secret,
+    const std::function<std::string(const std::shared_ptr<Ssl::TlsCertificateConfigImpl>& secret)>&
+        read_managed_secret) {
+  if (!config.tls_certificates().empty()) {
+    return read_inline_secret(config.tls_certificates()[0]);
+  } else if (!config.tls_certificate_sds_secret_configs().empty()) {
+
+    auto secret = secret_manager.findSecret(Secret::Secret::SecretType::TLS_CERTIFICATE,
+                                            config_source_hash, secret_name);
+    if (!secret) {
+      if (config_source_hash.empty()) {
+        throw EnvoyException(
+            fmt::format("Unknown static secret: {} : {}", config_source_hash, secret_name));
+      } else {
+        return std::string("");
+        //        throw EnvoyResourceDependencyException(
+        //            fmt::format("Dynamic secret is not ready yet: {} [{}]", secret_name,
+        //            config_source_hash));
+      }
+    }
+
+    return read_managed_secret(std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(secret));
+  } else {
+    return std::string("");
+  }
+}
+
+} // namespace
 
 const std::string ContextConfigImpl::DEFAULT_CIPHER_SUITES =
     "[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305]:"
@@ -30,19 +82,9 @@ const std::string ContextConfigImpl::DEFAULT_ECDH_CURVES = "X25519:P-256";
 
 ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config,
                                      Secret::SecretManager& secret_manager)
-    : secret_manager_(secret_manager), sds_dynamic_secret_name_([&config, &secret_manager] {
-        return (!config.tls_certificate_sds_secret_configs().empty() &&
-                config.tls_certificate_sds_secret_configs()[0].has_sds_config())
-                   ? config.tls_certificate_sds_secret_configs()[0].name()
-                   : "";
-      }()),
-      sds_config_source_hash_([&config, &secret_manager] {
-        return (!config.tls_certificate_sds_secret_configs().empty() &&
-                config.tls_certificate_sds_secret_configs()[0].has_sds_config())
-                   ? secret_manager.addOrUpdateSdsConfigSource(
-                         config.tls_certificate_sds_secret_configs()[0].sds_config())
-                   : 0;
-      }()),
+    : secret_manager_(secret_manager), sds_secret_name_(readSdsSecretName(config)),
+      sds_config_source_hash_(readConfigSourceHash(config, secret_manager)),
+      sds_dynamic_secret_not_ready_(false),
       alpn_protocols_(RepeatedPtrUtil::join(config.alpn_protocols(), ",")),
       alt_alpn_protocols_(config.deprecated_v1().alt_alpn_protocols()),
       cipher_suites_(StringUtil::nonEmptyStringOrDefault(
@@ -55,59 +97,26 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           Config::DataSource::read(config.validation_context().crl(), true)),
       certificate_revocation_list_path_(
           Config::DataSource::getPath(config.validation_context().crl())),
-      cert_chain_([&config, &secret_manager, this] {
-        if (!config.tls_certificates().empty()) {
-          return Config::DataSource::read(config.tls_certificates()[0].certificate_chain(), true);
-        } else if (!config.tls_certificate_sds_secret_configs().empty()) {
-          if (config.tls_certificate_sds_secret_configs()[0].has_sds_config()) {
-            if (secret_manager.dynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_) ==
-                nullptr) {
-              throw EnvoyResourceDependencyException(
-                  fmt::format("Dynamic secret is not ready yet: {}",
-                              config.tls_certificate_sds_secret_configs()[0].name()));
-            }
-          } else {
-            const auto secret =
-                secret_manager.staticSecret(config.tls_certificate_sds_secret_configs()[0].name());
-            if (secret == nullptr) {
-              throw EnvoyException(
-                  fmt::format("Static secret is not ready yet: {}",
-                              config.tls_certificate_sds_secret_configs()[0].name()));
-            }
+      cert_chain_(readConfig(
+          config, secret_manager, sds_config_source_hash_, sds_secret_name_,
+          [](const envoy::api::v2::auth::TlsCertificate& tls_certificate) -> std::string {
+            return Config::DataSource::read(tls_certificate.certificate_chain(), true);
+          },
+          [](const std::shared_ptr<Ssl::TlsCertificateConfigImpl>& secret) -> std::string {
             return secret->certificateChain();
-          }
-        }
-        return std::string("");
-      }()),
+          })),
       cert_chain_path_(
           config.tls_certificates().empty()
               ? ""
               : Config::DataSource::getPath(config.tls_certificates()[0].certificate_chain())),
-      private_key_([&config, &secret_manager, this] {
-        if (!config.tls_certificates().empty()) {
-          return Config::DataSource::read(config.tls_certificates()[0].private_key(), true);
-        } else if (!config.tls_certificate_sds_secret_configs().empty()) {
-          if (config.tls_certificate_sds_secret_configs()[0].has_sds_config()) {
-            if (secret_manager.dynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_) ==
-                nullptr) {
-              throw EnvoyResourceDependencyException(
-                  fmt::format("Dynamic secret is not ready yet: {}",
-                              config.tls_certificate_sds_secret_configs()[0].name()));
-            }
-            return std::string("");
-          }
-
-          const auto secret =
-              secret_manager.staticSecret(config.tls_certificate_sds_secret_configs()[0].name());
-          if (secret == nullptr) {
-            throw EnvoyException(
-                fmt::format("Static secret is not ready yet: {}",
-                            config.tls_certificate_sds_secret_configs()[0].name()));
-          }
-          return secret->privateKey();
-        }
-        return std::string("");
-      }()),
+      private_key_(readConfig(
+          config, secret_manager, sds_config_source_hash_, sds_secret_name_,
+          [](const envoy::api::v2::auth::TlsCertificate& tls_certificate) -> std::string {
+            return Config::DataSource::read(tls_certificate.private_key(), true);
+          },
+          [](const std::shared_ptr<Ssl::TlsCertificateConfigImpl>& secret) -> std::string {
+            return secret->privateKey();
+          })),
       private_key_path_(
           config.tls_certificates().empty()
               ? ""
@@ -155,16 +164,28 @@ const std::string& ContextConfigImpl::certChain() const {
   if (!cert_chain_.empty()) {
     return cert_chain_;
   }
-  auto secret = secret_manager_.dynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_);
-  return (secret) ? secret->certificateChain() : cert_chain_;
+
+  auto secret = secret_manager_.findSecret(Secret::Secret::TLS_CERTIFICATE, sds_config_source_hash_,
+                                           sds_secret_name_);
+  if (!secret) {
+    return cert_chain_;
+  }
+
+  return std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(secret)->certificateChain();
 }
 
 const std::string& ContextConfigImpl::privateKey() const {
   if (!private_key_.empty()) {
     return private_key_;
   }
-  auto secret = secret_manager_.dynamicSecret(sds_config_source_hash_, sds_dynamic_secret_name_);
-  return (secret) ? secret->privateKey() : private_key_;
+
+  auto secret = secret_manager_.findSecret(Secret::Secret::TLS_CERTIFICATE, sds_config_source_hash_,
+                                           sds_secret_name_);
+  if (!secret) {
+    return private_key_;
+  }
+
+  return std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(secret)->privateKey();
 }
 
 ClientContextConfigImpl::ClientContextConfigImpl(
@@ -177,7 +198,8 @@ ClientContextConfigImpl::ClientContextConfigImpl(
     throw EnvoyException("SNI names containing NULL-byte are not allowed");
   }
   // TODO(PiotrSikora): Support multiple TLS certificates.
-  if (config.common_tls_context().tls_certificates().size() > 1) {
+  if ((config.common_tls_context().tls_certificates().size() +
+       config.common_tls_context().tls_certificate_sds_secret_configs().size()) > 1) {
     throw EnvoyException("Multiple TLS certificates are not supported for client contexts");
   }
 }
@@ -219,8 +241,8 @@ ServerContextConfigImpl::ServerContextConfigImpl(
         return ret;
       }()) {
   // TODO(PiotrSikora): Support multiple TLS certificates.
-  if (config.common_tls_context().tls_certificates().size() != 1 &&
-      config.common_tls_context().tls_certificate_sds_secret_configs().size() != 1) {
+  if ((config.common_tls_context().tls_certificates().size() +
+       config.common_tls_context().tls_certificate_sds_secret_configs().size()) != 1) {
     throw EnvoyException("A single TLS certificate is required for server contexts");
   }
 }

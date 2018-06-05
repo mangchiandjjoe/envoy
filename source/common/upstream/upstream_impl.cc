@@ -290,6 +290,7 @@ ClusterInfoImpl::ClusterInfoImpl(const envoy::api::v2::Cluster& config,
       Server::Configuration::UpstreamTransportSocketConfigFactory>(transport_socket.name());
   ProtobufTypes::MessagePtr message =
       Config::Utility::translateToFactoryConfig(transport_socket, config_factory);
+
   transport_socket_factory_ = config_factory.createTransportSocketFactory(*message, *this);
 
   switch (config.lb_policy()) {
@@ -468,6 +469,14 @@ void ClusterImplBase::initialize(std::function<void()> callback) {
   ASSERT(!initialization_started_);
   ASSERT(initialization_complete_callback_ == nullptr);
   initialization_complete_callback_ = callback;
+
+  if (&this->info_->transportSocketFactory() == nullptr) {
+    // SDS secret was not ready yet
+
+    std::cout << __FILE__ << ":" << __LINE__ << " SDS secret was not ready yet" << std::endl
+              << std::flush;
+  }
+
   startPreInit();
 }
 

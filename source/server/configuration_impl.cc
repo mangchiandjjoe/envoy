@@ -18,7 +18,6 @@
 #include "common/config/utility.h"
 #include "common/protobuf/utility.h"
 #include "common/ratelimit/ratelimit_impl.h"
-#include "common/secret/secret_impl.h"
 #include "common/tracing/http_tracer_impl.h"
 
 namespace Envoy {
@@ -51,8 +50,7 @@ void MainImpl::initialize(const envoy::config::bootstrap::v2::Bootstrap& bootstr
   ENVOY_LOG(info, "loading {} static secret(s)", secrets.size());
   for (ssize_t i = 0; i < secrets.size(); i++) {
     ENVOY_LOG(debug, "static secret #{}: {}", i, secrets[i].name());
-    server.secretManager().addOrUpdateStaticSecret(
-        Secret::SecretSharedPtr(new Secret::SecretImpl(secrets[i], false, 0)));
+    server.secretManager().addOrUpdateSecret("", secrets[i]);
   }
 
   cluster_manager_ = cluster_manager_factory.clusterManagerFromProto(
@@ -62,12 +60,7 @@ void MainImpl::initialize(const envoy::config::bootstrap::v2::Bootstrap& bootstr
   ENVOY_LOG(info, "loading {} listener(s)", listeners.size());
   for (ssize_t i = 0; i < listeners.size(); i++) {
     ENVOY_LOG(debug, "listener #{}:", i);
-
-    try {
-      server.listenerManager().addOrUpdateListener(listeners[i], "", false);
-    } catch (const EnvoyResourceDependencyException& e) {
-      ENVOY_LOG(debug, "dependent resource is not ready: '{}'", e.what());
-    }
+    server.listenerManager().addOrUpdateListener(listeners[i], "", false);
   }
 
   stats_flush_interval_ =

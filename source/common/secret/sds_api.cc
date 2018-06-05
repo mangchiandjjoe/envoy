@@ -10,19 +10,13 @@
 #include "common/config/resources.h"
 #include "common/config/subscription_factory.h"
 #include "common/secret/sds_subscription.h"
-#include "common/secret/secret_impl.h"
 
 namespace Envoy {
 namespace Secret {
 
 SdsApi::SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
                SecretManager& secret_manager)
-    : server_(server),
-      sds_config_([&sds_config] {
-        envoy::api::v2::core::ConfigSource cfg;
-        cfg.CopyFrom(sds_config);
-        return cfg;
-      }()),
+    : server_(server), sds_config_(sds_config),
       sds_config_source_hash_(SecretManager::configSourceHash(sds_config)),
       secret_manager_(secret_manager) {
   server_.initManager().registerTarget(*this);
@@ -36,11 +30,13 @@ void SdsApi::initialize(std::function<void()> callback) {
       server_.random(), server_.stats(),
       [this]() -> Config::Subscription<envoy::api::v2::auth::Secret>* {
         return new SdsSubscription(Config::Utility::generateStats(this->server_.stats()),
-            this->sds_config_, this->server_.clusterManager(),
-            this->server_.dispatcher(), this->server_.random(),
-            this->server_.localInfo());
+                                   this->sds_config_, this->server_.clusterManager(),
+                                   this->server_.dispatcher(), this->server_.random(),
+                                   this->server_.localInfo());
       },
       "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets",
+      // TODO(jaebong) needs to use envoy.service.discovery.v2.SecretDiscoveryService.StreamSecrets
+      // when SDS stream service is available.
       "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets");
 
   Config::Utility::checkLocalInfo("sds", server_.localInfo());
@@ -51,15 +47,13 @@ void SdsApi::initialize(std::function<void()> callback) {
 void SdsApi::onConfigUpdate(const ResourceVector& resources, const std::string&) {
   for (const auto& resource : resources) {
     switch (resource.type_case()) {
-      case envoy::api::v2::auth::Secret::kTlsCertificate:
-        secret_manager_.addOrUpdateDynamicSecret(
-            sds_config_source_hash_,
-            SecretSharedPtr(new SecretImpl(resource, true, sds_config_source_hash_)));
-        break;
-      case envoy::api::v2::auth::Secret::kSessionTicketKeys:
-        NOT_IMPLEMENTED
-      default:
-        throw EnvoyException("sds: invalid configuration");
+    case envoy::api::v2::auth::Secret::kTlsCertificate:
+      secret_manager_.addOrUpdateSecret(sds_config_source_hash_, resource);
+      break;
+    case envoy::api::v2::auth::Secret::kSessionTicketKeys:
+      NOT_IMPLEMENTED
+    default:
+      throw EnvoyException("sds: invalid configuration");
     }
   }
 
@@ -78,5 +72,5 @@ void SdsApi::runInitializeCallbackIfAny() {
   }
 }
 
-}  // namespace Secret
-}  // namespace Envoy
+} // namespace Secret
+} // namespace Envoy

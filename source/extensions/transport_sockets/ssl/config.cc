@@ -17,23 +17,20 @@ Network::TransportSocketFactoryPtr UpstreamSslSocketFactory::createTransportSock
     const Protobuf::Message& message,
     Server::Configuration::TransportSocketFactoryContext& context) {
 
-  std::unique_ptr<Ssl::ClientContextConfigImpl> upstream_config(
-      new Ssl::ClientContextConfigImpl(
-          MessageUtil::downcastAndValidate<const envoy::api::v2::auth::UpstreamTlsContext&>(
-              message),
-          context.sslContextManager().secretManager()));
+  std::unique_ptr<Ssl::ClientContextConfigImpl> upstream_config(new Ssl::ClientContextConfigImpl(
+      MessageUtil::downcastAndValidate<const envoy::api::v2::auth::UpstreamTlsContext&>(message),
+      context.sslContextManager().secretManager()));
 
   auto hash = upstream_config->sdsConfigShourceHash();
   auto name = upstream_config->sdsSecretName();
 
   Network::TransportSocketFactoryPtr tsf = std::make_unique<Ssl::ClientSslSocketFactory>(
-      std::move(upstream_config),
-       context.sslContextManager(), context.statsScope());
+      std::move(upstream_config), context.sslContextManager(), context.statsScope());
 
-  if(!name.empty()) {
-    context.sslContextManager().secretManager().registerSecretUpdateCallback(hash, name, *tsf.get());
+  if (!hash.empty()) {
+    context.sslContextManager().secretManager().registerSecretAddOrUpdateCallback(hash, name,
+                                                                                  *tsf.get());
   }
-
 
   return std::move(tsf);
 }
@@ -50,22 +47,20 @@ Network::TransportSocketFactoryPtr DownstreamSslSocketFactory::createTransportSo
     const Protobuf::Message& message, Server::Configuration::TransportSocketFactoryContext& context,
     const std::vector<std::string>& server_names) {
 
-  std::unique_ptr<Ssl::ServerContextConfigImpl> downstream_config(
-      new Ssl::ServerContextConfigImpl(
-          MessageUtil::downcastAndValidate<const envoy::api::v2::auth::DownstreamTlsContext&>(
-              message),
-          context.sslContextManager().secretManager()));
+  std::unique_ptr<Ssl::ServerContextConfigImpl> downstream_config(new Ssl::ServerContextConfigImpl(
+      MessageUtil::downcastAndValidate<const envoy::api::v2::auth::DownstreamTlsContext&>(message),
+      context.sslContextManager().secretManager()));
 
   auto hash = downstream_config->sdsConfigShourceHash();
   auto name = downstream_config->sdsSecretName();
 
-
   Network::TransportSocketFactoryPtr tsf = std::make_unique<Ssl::ServerSslSocketFactory>(
-        std::move(downstream_config),
-        context.sslContextManager(), context.statsScope(), server_names);
+      std::move(downstream_config), context.sslContextManager(), context.statsScope(),
+      server_names);
 
-  if(!name.empty()) {
-    context.sslContextManager().secretManager().registerSecretUpdateCallback(hash, name, *tsf.get());
+  if (!hash.empty()) {
+    context.sslContextManager().secretManager().registerSecretAddOrUpdateCallback(hash, name,
+                                                                                  *tsf.get());
   }
 
   return std::move(tsf);

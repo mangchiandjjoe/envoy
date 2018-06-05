@@ -110,9 +110,7 @@ bool CaptureSocketFactory::implementsSecureTransport() const {
 }
 
 // TODO (jaebong) implement this
-void CaptureSocketFactory::onAddOrUpdateSecret() {
-
-}
+void CaptureSocketFactory::onAddOrUpdateSecret() {}
 
 } // namespace Capture
 } // namespace TransportSockets

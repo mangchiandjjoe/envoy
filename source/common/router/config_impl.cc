@@ -525,8 +525,7 @@ void RouteEntryImplBase::validateClusters(Upstream::ClusterManager& cm) const {
   // route tables. This would enable the all CDS with static route table case.
   if (!cluster_name_.empty()) {
     if (!cm.get(cluster_name_)) {
-      throw EnvoyClusterDependencyException(fmt::format("route: unknown cluster 4 '{}'", cluster_name_), cluster_name_);
-      // throw EnvoyException(fmt::format("route: unknown cluster 4 '{}'", cluster_name_));
+      throw EnvoyException(fmt::format("route: unknown cluster'{}'", cluster_name_));
     }
   } else if (!weighted_clusters_.empty()) {
     for (const WeightedClusterEntrySharedPtr& cluster : weighted_clusters_) {

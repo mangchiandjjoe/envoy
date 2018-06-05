@@ -126,9 +126,7 @@ public:
 
   bssl::UniquePtr<SSL> newSsl() const override;
 
-  bool checkUpdated(const Secret::SecretSharedPtr) const {
-    return false;
-  }
+  bool checkUpdated(const Secret::SecretSharedPtr) const { return false; }
 
 private:
   std::string server_name_indication_;
@@ -139,9 +137,7 @@ public:
   ServerContextImpl(ContextManagerImpl& parent, Stats::Scope& scope,
                     const ServerContextConfig& config, const std::vector<std::string>& server_names,
                     Runtime::Loader& runtime);
-  bool checkUpdated(const Secret::SecretSharedPtr) const {
-    return false;
-  }
+  bool checkUpdated(const Secret::SecretSharedPtr) const { return false; }
 
 private:
   int alpnSelectCallback(const unsigned char** out, unsigned char* outlen, const unsigned char* in,

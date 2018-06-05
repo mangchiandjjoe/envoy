@@ -2,7 +2,7 @@
 
 #include "envoy/buffer/buffer.h"
 #include "envoy/common/pure.h"
-#include "envoy/secret/secret.h"
+#include "envoy/secret/secret_callbacks.h"
 #include "envoy/ssl/connection.h"
 
 namespace Envoy {
@@ -158,7 +158,6 @@ public:
    * @return Network::TransportSocketPtr a transport socket to be passed to connection.
    */
   virtual TransportSocketPtr createTransportSocket() const PURE;
-
 
   virtual void onAddOrUpdateSecret() PURE;
 };

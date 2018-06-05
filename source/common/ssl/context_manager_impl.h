@@ -35,8 +35,8 @@ public:
   Ssl::ClientContextPtr createSslClientContext(Stats::Scope& scope,
                                                const ClientContextConfig& config) override;
   Ssl::ClientContextPtr updateSslClientContext(const Ssl::ClientContextPtr& context,
-                                                  Stats::Scope& scope,
-                                                  const ClientContextConfig& config) override;
+                                               Stats::Scope& scope,
+                                               const ClientContextConfig& config) override;
 
   Ssl::ServerContextPtr
   createSslServerContext(Stats::Scope& scope, const ServerContextConfig& config,

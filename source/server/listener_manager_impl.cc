@@ -438,8 +438,6 @@ ListenerManagerImpl::ListenerManagerImpl(Instance& server,
     : server_(server), factory_(listener_factory), stats_(generateStats(server.stats())),
       config_tracker_entry_(server.admin().getConfigTracker().add(
           "listeners", [this] { return dumpListenerConfigs(); })) {
-  server.secretManager().registerSecretInitializeCallback(*this);
-
   for (uint32_t i = 0; i < std::max(1U, server.options().concurrency()); i++) {
     workers_.emplace_back(worker_factory.createWorker());
   }
@@ -473,32 +471,6 @@ ProtobufTypes::MessagePtr ListenerManagerImpl::dumpListenerConfigs() {
   return config_dump;
 }
 
-void ListenerManagerImpl::onAddOrUpdateSecret() {
-  // create listeners in the pending creating list
-  std::vector<PendingListenerInfo> listeners;
-
-  {
-    std::unique_lock<std::shared_timed_mutex> lhs(pending_listeners_mutex_);
-    if (pending_listeners_.empty()) {
-      return;
-    }
-
-    copy(pending_listeners_.begin(), pending_listeners_.end(), back_inserter(listeners));
-    pending_listeners_.clear();
-  }
-
-  ENVOY_LOG(info, "creating pending listeners: {}", listeners.size());
-
-  for (const auto& listener : listeners) {
-    try {
-      addOrUpdateListener(listener.config, listener.version_info, listener.modifiable);
-      ENVOY_LOG(debug, "created pending cluster: '{}'", MessageUtil::hash(listener.config));
-    } catch (const EnvoyResourceDependencyException& e) {
-      ENVOY_LOG(info, "dependent resource is still not ready: '{}'", e.what());
-    }
-  }
-}
-
 ListenerManagerStats ListenerManagerImpl::generateStats(Stats::Scope& scope) {
   const std::string final_prefix = "listener_manager.";
   return {ALL_LISTENER_MANAGER_STATS(POOL_COUNTER_PREFIX(scope, final_prefix),
@@ -530,32 +502,9 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
     return false;
   }
 
-  ListenerImplPtr new_listener;
-
-  try {
-    new_listener =
-        ListenerImplPtr(new ListenerImpl(config, version_info, *this, name, modifiable,
-                                         workers_started_, hash, server_.secretManager()));
-  } catch (const EnvoyClusterDependencyException& ee) {
-    if (server_.secretManager().isPendingClusterName(ee.cluster_name)) {
-      std::unique_lock<std::shared_timed_mutex> lhs(pending_listeners_mutex_);
-      pending_listeners_.push_back({config, version_info, modifiable});
-      throw EnvoyResourceDependencyException(
-          fmt::format("still waiting for the cluster initialization: {}", ee.cluster_name));
-    } else {
-      throw EnvoyException(ee.what());
-    }
-  } catch (const EnvoyResourceDependencyException& e) {
-    ENVOY_LOG(
-        info,
-        "required resources are not ready yet. added listener to pending creation list: {} {}",
-        name, e.what());
-    {
-      std::unique_lock<std::shared_timed_mutex> lhs(pending_listeners_mutex_);
-      pending_listeners_.push_back({config, version_info, modifiable});
-    }
-    throw e;
-  }
+  ListenerImplPtr new_listener =
+      ListenerImplPtr(new ListenerImpl(config, version_info, *this, name, modifiable,
+                                       workers_started_, hash, server_.secretManager()));
 
   ListenerImpl& new_listener_ref = *new_listener;
 

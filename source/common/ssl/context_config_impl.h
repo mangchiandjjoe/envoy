@@ -48,8 +48,9 @@ public:
   unsigned minProtocolVersion() const override { return min_protocol_version_; };
   unsigned maxProtocolVersion() const override { return max_protocol_version_; };
 
-  uint64_t sdsConfigShourceHash() const { return sds_config_source_hash_; }
-  const std::string sdsSecretName() const { return sds_dynamic_secret_name_; }
+  const std::string& sdsConfigShourceHash() const override { return sds_config_source_hash_; }
+  const std::string& sdsSecretName() const override { return sds_secret_name_; }
+  bool sdsDynamicSecretNotReady() const { return sds_dynamic_secret_not_ready_; }
 
 protected:
   ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config,
@@ -64,8 +65,9 @@ private:
   static const std::string DEFAULT_ECDH_CURVES;
 
   Secret::SecretManager& secret_manager_;
-  const std::string sds_dynamic_secret_name_;
-  const uint64_t sds_config_source_hash_;
+  const std::string sds_secret_name_;
+  const std::string sds_config_source_hash_;
+  const bool sds_dynamic_secret_not_ready_;
 
   const std::string alpn_protocols_;
   const std::string alt_alpn_protocols_;
@@ -85,8 +87,7 @@ private:
   const unsigned max_protocol_version_;
 };
 
-class ClientContextConfigImpl : public ContextConfigImpl,
-                                public ClientContextConfig {
+class ClientContextConfigImpl : public ContextConfigImpl, public ClientContextConfig {
 public:
   explicit ClientContextConfigImpl(const envoy::api::v2::auth::UpstreamTlsContext& config,
                                    Secret::SecretManager& secret_manager);
@@ -95,12 +96,12 @@ public:
 
   // Ssl::ClientContextConfig
   const std::string& serverNameIndication() const override { return server_name_indication_; }
+
 private:
   const std::string server_name_indication_;
 };
 
-class ServerContextConfigImpl : public ContextConfigImpl,
-                                public ServerContextConfig {
+class ServerContextConfigImpl : public ContextConfigImpl, public ServerContextConfig {
 public:
   explicit ServerContextConfigImpl(const envoy::api::v2::auth::DownstreamTlsContext& config,
                                    Secret::SecretManager& secret_manager);

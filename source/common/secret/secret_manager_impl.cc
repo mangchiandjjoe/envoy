@@ -1,139 +1,123 @@
 #include "common/secret/secret_manager_impl.h"
 
 #include "common/common/logger.h"
-#include "common/secret/secret_impl.h"
+#include "common/ssl/tls_certificate_config_impl.h"
 
 namespace Envoy {
 namespace Secret {
 
-bool SecretManagerImpl::addOrUpdateStaticSecret(const SecretSharedPtr secret) {
-  static_secrets_[secret->name()] = secret;
-  return true;
+void SecretManagerImpl::addOrUpdateSecret(const std::string& sds_config_source_hash,
+                                          const envoy::api::v2::auth::Secret& secret_config) {
+  SecretSharedPtr secret;
+  switch (secret_config.type_case()) {
+  case envoy::api::v2::auth::Secret::TypeCase::kTlsCertificate:
+    secret = std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config);
+    break;
+  default:
+    throw EnvoyException("Secret type not implemented");
+  }
+
+  std::unique_lock<std::shared_timed_mutex> lhs(secrets_mutex_);
+  secrets_[secret->type()][sds_config_source_hash][secret->name()] = secret;
+
+  if (!sds_config_source_hash.empty()) {
+    server_.dispatcher().post([this, sds_config_source_hash, secret]() {
+      // run secret update callbacks
+      {
+        std::unique_lock<std::shared_timed_mutex> lhs(secret_update_callbacks_mutex_);
+        auto config_source_it = secret_update_callbacks_.find(sds_config_source_hash);
+        if (config_source_it != secret_update_callbacks_.end()) {
+          auto callback_it = config_source_it->second.find(secret->name());
+          if (callback_it != config_source_it->second.end()) {
+            for (auto& callback : callback_it->second) {
+              if (callback.first == nullptr || !callback.first->equalTo(secret)) {
+                callback.first = secret;
+                callback.second->onAddOrUpdateSecret();
+              }
+            }
+          }
+        }
+      }
+    });
+  }
 }
 
-const SecretSharedPtr SecretManagerImpl::staticSecret(const std::string& name) const {
-  auto static_secret = static_secrets_.find(name);
-  return (static_secret != static_secrets_.end()) ? static_secret->second : nullptr;
+const SecretSharedPtr SecretManagerImpl::findSecret(Secret::SecretType type,
+                                                    const std::string& sdsConfigSourceHash,
+                                                    const std::string& name) const {
+  std::shared_lock<std::shared_timed_mutex> lhs(secrets_mutex_);
+
+  auto type_it = secrets_.find(type);
+  if (type_it == secrets_.end()) {
+    return nullptr;
+  }
+
+  auto config_source_it = type_it->second.find(sdsConfigSourceHash);
+  if (config_source_it == type_it->second.end()) {
+    return nullptr;
+  }
+
+  auto name_it = config_source_it->second.find(name);
+  if (name_it == config_source_it->second.end()) {
+    return nullptr;
+  }
+
+  return name_it->second;
 }
 
-uint64_t SecretManagerImpl::addOrUpdateSdsConfigSource(
-    const envoy::api::v2::core::ConfigSource& config_source) {
+std::size_t SecretManagerImpl::removeSecret(Secret::SecretType type,
+                                            const std::string& sdsConfigSourceHash,
+                                            const std::string& name) {
+  std::unique_lock<std::shared_timed_mutex> lhs(secrets_mutex_);
 
+  auto type_it = secrets_.find(type);
+  if (type_it == secrets_.end()) {
+    return 0;
+  }
+
+  auto config_source_it = type_it->second.find(sdsConfigSourceHash);
+  if (config_source_it == type_it->second.end()) {
+    return 0;
+  }
+
+  return config_source_it->second.erase(name);
+}
+
+std::string SecretManagerImpl::addOrUpdateSdsService(
+    const envoy::api::v2::core::ConfigSource& sdsConfigSource) {
   std::unique_lock<std::shared_timed_mutex> lhs(sds_api_mutex_);
 
-  uint64_t hash = SecretManager::configSourceHash(config_source);
-
+  auto hash = SecretManager::configSourceHash(sdsConfigSource);
   if (sds_apis_.find(hash) != sds_apis_.end()) {
     return hash;
   }
 
-  std::unique_ptr<SdsApi> sds_api(new SdsApi(server_, config_source, *this));
-  sds_apis_[hash] = std::move(sds_api);
-  dynamic_secrets_[hash] = {};
+  sds_apis_[hash] = std::move(std::make_unique<SdsApi>(server_, sdsConfigSource, *this));
+
   return hash;
 }
 
-bool SecretManagerImpl::addOrUpdateDynamicSecret(const uint64_t config_source_hash,
-                                                 const SecretSharedPtr secret) {
+void SecretManagerImpl::registerSecretAddOrUpdateCallback(const std::string config_source_hash,
+                                                          const std::string secret_name,
+                                                          SecretCallbacks& callback) {
+  auto secret = findSecret(Secret::TLS_CERTIFICATE, config_source_hash, secret_name);
 
-  std::unique_lock<std::shared_timed_mutex> lhs(dynamic_secret_mutex_);
+  std::unique_lock<std::shared_timed_mutex> lhs(secret_update_callbacks_mutex_);
 
-  auto sds_service = dynamic_secrets_.find(config_source_hash);
-  if (sds_service == dynamic_secrets_.end()) {
-    ENVOY_LOG(error, "sds: ConfigSource not found: ", secret->name());
-    return false;
+  auto config_source_it = secret_update_callbacks_.find(config_source_hash);
+  if (config_source_it == secret_update_callbacks_.end()) {
+    secret_update_callbacks_[config_source_hash][secret_name] = {{secret, &callback}};
+    return;
   }
 
-  sds_service->second[secret->name()] = secret;
-
-  // Post callback to call registered SecretCallbacks functions
-  std::function<void()> secret_update_callback = [this, config_source_hash, secret]() {
-    // running secret update callback function
-    for (auto& update_callback : secret_update_callback_) {
-      if(update_callback.config_source_hash == config_source_hash &&
-          update_callback.secret_name == secret->name() &&
-          update_callback.secret->certificateChain() != secret->certificateChain() &&
-          update_callback.secret->privateKey() != secret->privateKey()) {
-        update_callback.callback->onAddOrUpdateSecret();
-        update_callback.secret = secret;
-      }
-    }
-
-    // running secret initialization callback functions
-    for (const auto& callback : secret_callbacks_) {
-      callback->onAddOrUpdateSecret();
-    }
-
-  };
-  server_.dispatcher().post(secret_update_callback);
-
-  return true;
-}
-
-const SecretSharedPtr SecretManagerImpl::dynamicSecret(const uint64_t config_source_hash,
-                                                       const std::string& name) const {
-  std::shared_lock<std::shared_timed_mutex> lhs(dynamic_secret_mutex_);
-
-  auto sds_service = dynamic_secrets_.find(config_source_hash);
-  if (sds_service == dynamic_secrets_.end()) {
-    ENVOY_LOG(error, "sds: ConfigSource not found: ", name);
-    return nullptr;
+  auto name_it = config_source_it->second.find(secret_name);
+  if (name_it == config_source_it->second.end()) {
+    config_source_it->second[secret_name] = {{secret, &callback}};
+    return;
   }
 
-  auto dynamic_secret = sds_service->second.find(name);
-  if (dynamic_secret == sds_service->second.end()) {
-    ENVOY_LOG(info, "sds: Secret not found: ", name);
-    return nullptr;
-  }
-
-  return dynamic_secret->second;
+  name_it->second.push_back({secret, &callback});
 }
-
-bool SecretManagerImpl::removeDynamicSecret(const uint64_t config_source_hash,
-                                            const std::string& name) {
-  std::unique_lock<std::shared_timed_mutex> lhs(dynamic_secret_mutex_);
-
-  auto sds_service = dynamic_secrets_.find(config_source_hash);
-  if (sds_service == dynamic_secrets_.end()) {
-    ENVOY_LOG(error, "sds: ConfigSource not found: ", name);
-    return false;
-  }
-
-  auto dynamic_secret = sds_service->second.find(name);
-  if (dynamic_secret == sds_service->second.end()) {
-    ENVOY_LOG(error, "sds: Secret not found: ", name);
-    return false;
-  }
-
-  sds_service->second.erase(name);
-
-  return true;
-}
-
-void SecretManagerImpl::registerSecretInitializeCallback(SecretCallbacks& callback) {
-  secret_callbacks_.push_back(&callback);
-}
-
-void SecretManagerImpl::registerSecretUpdateCallback(const uint64_t hash, const std::string& name,
-                                                     SecretCallbacks& callback) {
-  auto secret = dynamicSecret(hash, name);
-  if(secret) {
-    secret_update_callback_.push_back({hash, name, secret, callback});
-  }
-}
-
-void SecretManagerImpl::addPendingClusterName(const std::string cluster_name) {
-  pending_clusters_.emplace(cluster_name);
-}
-
-void SecretManagerImpl::removePendigClusterName(const std::string cluster_name) {
-  pending_clusters_.erase(cluster_name);
-}
-
-bool SecretManagerImpl::isPendingClusterName(const std::string cluster_name) {
-  return pending_clusters_.find(cluster_name) != pending_clusters_.end();
-}
-
 
 } // namespace Secret
 } // namespace Envoy

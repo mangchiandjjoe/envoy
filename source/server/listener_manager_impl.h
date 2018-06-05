@@ -96,9 +96,7 @@ struct ListenerManagerStats {
 /**
  * Implementation of ListenerManager.
  */
-class ListenerManagerImpl : public ListenerManager,
-                            public Secret::SecretCallbacks,
-                            Logger::Loggable<Logger::Id::config> {
+class ListenerManagerImpl : public ListenerManager, Logger::Loggable<Logger::Id::config> {
 public:
   ListenerManagerImpl(Instance& server, ListenerComponentFactory& listener_factory,
                       WorkerFactory& worker_factory);
@@ -118,7 +116,6 @@ public:
   void startWorkers(GuardDog& guard_dog) override;
   void stopListeners() override;
   void stopWorkers() override;
-  void onAddOrUpdateSecret() override;
 
   Instance& server_;
   ListenerComponentFactory& factory_;
@@ -141,14 +138,7 @@ private:
 
     PendingListenerInfo(const envoy::api::v2::Listener& config_, const std::string& version_info_,
                         bool modifiable_)
-        : config([&config_] {
-            envoy::api::v2::Listener cfg;
-            cfg.CopyFrom(config_);
-            return cfg;
-          }()),
-          version_info(version_info_),
-          modifiable(modifiable_) {
-    }
+        : config(config_), version_info(version_info_), modifiable(modifiable_) {}
   };
 
   void addListenerToWorker(Worker& worker, ListenerImpl& listener);

@@ -64,10 +64,11 @@ private:
   mutable std::string cached_url_encoded_pem_encoded_peer_certificate_;
 };
 
-class ClientSslSocketFactory : public Network::TransportSocketFactory, Logger::Loggable<Logger::Id::config> {
+class ClientSslSocketFactory : public Network::TransportSocketFactory,
+                               Logger::Loggable<Logger::Id::config> {
 public:
-  ClientSslSocketFactory(const std::unique_ptr<ClientContextConfig> config, Ssl::ContextManager& manager,
-                         Stats::Scope& stats_scope);
+  ClientSslSocketFactory(const std::unique_ptr<ClientContextConfig> config,
+                         Ssl::ContextManager& manager, Stats::Scope& stats_scope);
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
   void onAddOrUpdateSecret() override;
@@ -79,10 +80,12 @@ private:
   Stats::Scope& stats_scope_;
 };
 
-class ServerSslSocketFactory : public Network::TransportSocketFactory, Logger::Loggable<Logger::Id::config> {
+class ServerSslSocketFactory : public Network::TransportSocketFactory,
+                               Logger::Loggable<Logger::Id::config> {
 public:
-  ServerSslSocketFactory(const std::unique_ptr<ServerContextConfig> config, Ssl::ContextManager& manager,
-                         Stats::Scope& stats_scope, const std::vector<std::string>& server_names);
+  ServerSslSocketFactory(const std::unique_ptr<ServerContextConfig> config,
+                         Ssl::ContextManager& manager, Stats::Scope& stats_scope,
+                         const std::vector<std::string>& server_names);
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
   void onAddOrUpdateSecret() override;

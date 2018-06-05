@@ -94,10 +94,7 @@ TransportSocketPtr RawBufferSocketFactory::createTransportSocket() const {
 bool RawBufferSocketFactory::implementsSecureTransport() const { return false; }
 
 // TODO (jaebong)
-void RawBufferSocketFactory::onAddOrUpdateSecret() {
-
-}
-
+void RawBufferSocketFactory::onAddOrUpdateSecret() {}
 
 } // namespace Network
 } // namespace Envoy

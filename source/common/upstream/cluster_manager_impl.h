@@ -147,23 +147,13 @@ struct ClusterManagerStats {
 struct PendingClusterInfo {
   const envoy::api::v2::Cluster config;
   const std::string version_info;
-
-  PendingClusterInfo(const envoy::api::v2::Cluster& config_, const std::string& version_info_)
-      : config([&config_] {
-          envoy::api::v2::Cluster cfg;
-          cfg.CopyFrom(config_);
-          return cfg;
-        }()),
-        version_info(version_info_) {}
 };
 
 /**
  * Implementation of ClusterManager that reads from a proto configuration, maintains a central
  * cluster list, as well as thread local caches of each cluster and associated connection pools.
  */
-class ClusterManagerImpl : public ClusterManager,
-                           public Secret::SecretCallbacks,
-                           Logger::Loggable<Logger::Id::upstream> {
+class ClusterManagerImpl : public ClusterManager, Logger::Loggable<Logger::Id::upstream> {
 public:
   ClusterManagerImpl(const envoy::config::bootstrap::v2::Bootstrap& bootstrap,
                      ClusterManagerFactory& factory, Stats::Store& stats,
@@ -212,7 +202,6 @@ public:
 
   ClusterUpdateCallbacksHandlePtr
   addThreadLocalClusterUpdateCallbacks(ClusterUpdateCallbacks&) override;
-  void onAddOrUpdateSecret() override;
 
 private:
   /**

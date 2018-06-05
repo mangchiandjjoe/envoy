@@ -6,7 +6,10 @@
 #include <sstream>
 #include <string>
 
+#include "envoy/api/v2/auth/cert.pb.h"
+
 #include "envoy/secret/secret.h"
+#include "envoy/secret/secret_callbacks.h"
 #include "envoy/api/v2/core/config_source.pb.h"
 
 #include "common/json/json_loader.h"
@@ -22,61 +25,52 @@ public:
   virtual ~SecretManager() {}
 
   /**
-   * Add or update static secret.
+   * add or update secret grouped by type.
+   * @param sdsConfigSourceHash a hash string of normalized config source. If it is empty string,
+   *        find secret from the static secrets.
+   * @param secret a shared_ptr of an implementation of Secret.
+   */
+  virtual void addOrUpdateSecret(const std::string& sdsConfigSourceHash,
+                                 const envoy::api::v2::auth::Secret& secret) PURE;
+
+  /**const envoy::api::v2::auth::Secret& secret
+   * @param sdsConfigSourceHash hash string of normalized config source.
+   * @param name a name of the secret
+   * @return the secret in given type. Returns nullptr if the secret is not found.
+   */
+  virtual const SecretSharedPtr findSecret(Secret::SecretType type,
+                                           const std::string& sdsConfigSourceHash,
+                                           const std::string& name) const PURE;
+
+  /**
+   * @param sdsConfigSourceHash hash string of normalized config source.
+   * @param name a name of the secret.
+   * @return  The number of elements erased.
+   */
+  virtual std::size_t removeSecret(Secret::SecretType type,
+                                           const std::string& sdsConfigSourceHash,
+                                           const std::string& name) PURE;
+
+  /**
+   * Add or update SDS config source. SecretManager start downloading secrets from registered
+   * config source.
    *
-   * @param secret Updated Secret
-   * @return true when successful, otherwise returns false
+   * @param sdsConfigSource a protobuf message object contains SDS config source.
+   * @return a hash string of normalized config source
    */
-  virtual bool addOrUpdateStaticSecret(const SecretSharedPtr secret) PURE;
+  virtual std::string addOrUpdateSdsService(
+      const envoy::api::v2::core::ConfigSource& sdsConfigSource) PURE;
 
   /**
-   * @return the static secret for the given name.
-   */
-  virtual const SecretSharedPtr staticSecret(const std::string& name) const PURE;
-
-  /**
-   *
-   */
-  virtual uint64_t addOrUpdateSdsConfigSource(const envoy::api::v2::core::ConfigSource& config_source) PURE;
-
-  /**
-   * Add or update dynamic secret
-   *
-   * @param hash Hash code of ConfigSource
-   * @param secret new or updated SecretPtr
-   * @return true when successful, otherwise returns false
-   */
-  virtual bool addOrUpdateDynamicSecret(const uint64_t hash, const SecretSharedPtr secret) PURE;
-
-  /**
-   * @return the dynamic secret for the given ConfigSource and secret name.
-   */
-  virtual const SecretSharedPtr dynamicSecret(const uint64_t hash, const std::string& name) const PURE;
-
-
-  /**
-   * Register callback function for certificate initial download.
-   *
-   * @param callback Callback function
-   */
-  virtual void registerSecretInitializeCallback(SecretCallbacks& callback) PURE;
-
-  /**
-   * Register callback function when dynamic secrets were updated.
+   * Register callback function when on secret were updated.
    *
    * @param hash Hash code of ConfigSource
    * @param secret updated SecretSharedPtr
    * @param callback Callback function
    */
-  virtual void registerSecretUpdateCallback(const uint64_t config_source_hash,
-                                            const std::string& secret_name,
+  virtual void registerSecretAddOrUpdateCallback(const std::string config_source_hash,
+                                            const std::string secret_name,
                                             SecretCallbacks& callback) PURE;
-
-  virtual void addPendingClusterName(const std::string cluster_name) PURE;
-
-  virtual void removePendigClusterName(const std::string cluster_name) PURE;
-
-  virtual bool isPendingClusterName(const std::string cluster_name) PURE;
 
   /**
    * Calculate hash code of ConfigSource. To identify the same ConfigSource, calculate the hash
@@ -85,12 +79,12 @@ public:
    * @param  config_source envoy::api::v2::core::ConfigSource
    * @return hash code
    */
-  static uint64_t configSourceHash(const envoy::api::v2::core::ConfigSource& config_source) {
+  static std::string configSourceHash(const envoy::api::v2::core::ConfigSource& config_source) {
     std::string jsonstr;
     if (google::protobuf::util::MessageToJsonString(config_source, &jsonstr).ok()) {
       auto obj = Json::Factory::loadFromString(jsonstr);
       if (obj.get() != nullptr) {
-        return obj->hash();
+        return std::to_string(obj->hash());
       }
     }
     throw EnvoyException("invalid ConfigSource message");

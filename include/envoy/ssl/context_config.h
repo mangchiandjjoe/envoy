@@ -103,10 +103,11 @@ public:
    */
   virtual unsigned maxProtocolVersion() const PURE;
 
+  virtual const std::string& sdsConfigShourceHash() const PURE;
 
-  virtual uint64_t sdsConfigShourceHash() const PURE;
+  virtual const std::string& sdsSecretName() const PURE;
 
-  virtual const std::string sdsSecretName() const PURE;
+  virtual bool sdsDynamicSecretNotReady() const PURE;
 };
 
 class ClientContextConfig : public virtual ContextConfig {
