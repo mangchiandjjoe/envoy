@@ -23,18 +23,16 @@ void SecretManagerImpl::addOrUpdateSecret(const std::string& sds_config_source_h
   if (!sds_config_source_hash.empty()) {
     server_.dispatcher().post([this, sds_config_source_hash, secret]() {
       // run secret update callbacks
-      {
-        std::unique_lock<std::shared_timed_mutex> lhs(secret_update_callbacks_mutex_);
-        auto config_source_it = secret_update_callbacks_.find(sds_config_source_hash);
-        if (config_source_it != secret_update_callbacks_.end()) {
-          auto callback_it = config_source_it->second.find(secret->name());
-          if (callback_it != config_source_it->second.end()) {
-            for (auto& callback : callback_it->second) {
-              if (callback.first == nullptr || !callback.first->equalTo(secret)) {
-                callback.first = secret;
-                callback.second->onAddOrUpdateSecret();
-              }
+      std::unique_lock<std::shared_timed_mutex> lhs(secret_update_callbacks_mutex_);
+      auto config_source_it = secret_update_callbacks_.find(sds_config_source_hash);
+      if (config_source_it != secret_update_callbacks_.end()) {
+        auto callback_it = config_source_it->second.find(secret->name());
+        if (callback_it != config_source_it->second.end()) {
+          if (callback_it->second.first == nullptr || !callback_it->second.first->equalTo(secret)) {
+            for (auto& callback : callback_it->second.second) {
+              callback->onAddOrUpdateSecret();
             }
+            callback_it->second.first = secret;
           }
         }
       }
@@ -88,17 +86,17 @@ void SecretManagerImpl::registerSecretCallbacks(const std::string config_source_
 
   auto config_source_it = secret_update_callbacks_.find(config_source_hash);
   if (config_source_it == secret_update_callbacks_.end()) {
-    secret_update_callbacks_[config_source_hash][secret_name] = {{secret, &callback}};
+    secret_update_callbacks_[config_source_hash][secret_name] = {secret, {&callback}};
     return;
   }
 
   auto name_it = config_source_it->second.find(secret_name);
   if (name_it == config_source_it->second.end()) {
-    config_source_it->second[secret_name] = {{secret, &callback}};
+    config_source_it->second[secret_name] = {secret, {&callback}};
     return;
   }
 
-  name_it->second.push_back({secret, &callback});
+  name_it->second.second.push_back(&callback);
 }
 
 } // namespace Secret
