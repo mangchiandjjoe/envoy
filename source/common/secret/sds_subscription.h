@@ -24,11 +24,6 @@ public:
                   Upstream::ClusterManager& cm, Event::Dispatcher& dispatcher,
                   Runtime::RandomGenerator& random, const LocalInfo::LocalInfo& local_info);
 
-  // Config::Subscription
-  // const std::string versionInfo() const override {
-  //  return version_info_;
-  //}
-
 private:
   // Config::Subscription
   void start(const std::vector<std::string>& resources,

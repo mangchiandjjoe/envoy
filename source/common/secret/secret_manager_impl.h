@@ -63,11 +63,8 @@ private:
   // }
   std::unordered_map<
       std::string,
-      std::unordered_map<
-          std::string,
-          std::pair<SecretSharedPtr, std::vector<SecretCallbacks*>>
-      >
-  > secret_update_callbacks_;
+      std::unordered_map<std::string, std::pair<SecretSharedPtr, std::vector<SecretCallbacks*>>>>
+      secret_update_callbacks_;
 
   mutable std::shared_timed_mutex secret_update_callbacks_mutex_;
 };
