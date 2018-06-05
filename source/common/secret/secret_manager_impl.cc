@@ -97,9 +97,9 @@ std::string SecretManagerImpl::addOrUpdateSdsService(
   return hash;
 }
 
-void SecretManagerImpl::registerSecretAddOrUpdateCallback(const std::string config_source_hash,
-                                                          const std::string secret_name,
-                                                          SecretCallbacks& callback) {
+void SecretManagerImpl::registerSecretCallbacks(const std::string config_source_hash,
+                                                const std::string secret_name,
+                                                SecretCallbacks& callback) {
   auto secret = findSecret(Secret::TLS_CERTIFICATE, config_source_hash, secret_name);
 
   std::unique_lock<std::shared_timed_mutex> lhs(secret_update_callbacks_mutex_);

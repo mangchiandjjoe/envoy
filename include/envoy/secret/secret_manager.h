@@ -7,11 +7,11 @@
 #include <string>
 
 #include "envoy/api/v2/auth/cert.pb.h"
-
+#include "envoy/api/v2/core/config_source.pb.h"
 #include "envoy/secret/secret.h"
 #include "envoy/secret/secret_callbacks.h"
-#include "envoy/api/v2/core/config_source.pb.h"
 
+#include "common/common/fmt.h"
 #include "common/json/json_loader.h"
 
 namespace Envoy {
@@ -68,9 +68,9 @@ public:
    * @param secret updated SecretSharedPtr
    * @param callback Callback function
    */
-  virtual void registerSecretAddOrUpdateCallback(const std::string config_source_hash,
-                                            const std::string secret_name,
-                                            SecretCallbacks& callback) PURE;
+  virtual void registerSecretCallbacks(const std::string config_source_hash,
+                                       const std::string secret_name, SecretCallbacks& callback)
+                                           PURE;
 
   /**
    * Calculate hash code of ConfigSource. To identify the same ConfigSource, calculate the hash
@@ -87,7 +87,8 @@ public:
         return std::to_string(obj->hash());
       }
     }
-    throw EnvoyException("invalid ConfigSource message");
+    throw EnvoyException(
+        fmt::format("Invalid ConfigSource message: {}", config_source.DebugString()));
   }
 };
 

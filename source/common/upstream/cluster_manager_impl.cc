@@ -594,6 +594,11 @@ Host::CreateConnectionData ClusterManagerImpl::tcpConnForCluster(const std::stri
   if (logical_host) {
     auto conn_info =
         logical_host->createConnection(cluster_manager.thread_local_dispatcher_, nullptr);
+    if(!conn_info.connection_.get()) {
+      // TODO(jaebong) transport socket was not created yet by sds dynamic secret
+      return {nullptr, nullptr};
+    }
+
     if ((entry->second->cluster_info_->features() &
          ClusterInfo::Features::CLOSE_CONNECTIONS_ON_HOST_HEALTH_FAILURE) &&
         conn_info.connection_ != nullptr) {
