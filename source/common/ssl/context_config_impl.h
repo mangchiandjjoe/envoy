@@ -50,7 +50,6 @@ public:
 
   const std::string& sdsConfigShourceHash() const override { return sds_config_source_hash_; }
   const std::string& sdsSecretName() const override { return sds_secret_name_; }
-  bool sdsDynamicSecretNotReady() const { return sds_dynamic_secret_not_ready_; }
 
 protected:
   ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config,
@@ -67,7 +66,6 @@ private:
   Secret::SecretManager& secret_manager_;
   const std::string sds_secret_name_;
   const std::string sds_config_source_hash_;
-  const bool sds_dynamic_secret_not_ready_;
 
   const std::string alpn_protocols_;
   const std::string alt_alpn_protocols_;

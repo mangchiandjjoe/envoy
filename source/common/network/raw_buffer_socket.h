@@ -32,7 +32,7 @@ public:
   // Network::TransportSocketFactory
   TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
-  void onAddOrUpdateSecret() override;
+  void onAddOrUpdateSecret() override{};
 };
 
 } // namespace Network

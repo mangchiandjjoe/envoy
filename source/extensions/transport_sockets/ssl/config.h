@@ -2,8 +2,6 @@
 
 #include "envoy/server/transport_socket_config.h"
 
-#include "common/common/logger.h"
-
 #include "extensions/transport_sockets/well_known_names.h"
 
 namespace Envoy {
@@ -22,8 +20,7 @@ public:
 };
 
 class UpstreamSslSocketFactory : public Server::Configuration::UpstreamTransportSocketConfigFactory,
-                                 public SslSocketConfigFactory,
-                                 public Logger::Loggable<Logger::Id::upstream> {
+                                 public SslSocketConfigFactory {
 public:
   Network::TransportSocketFactoryPtr createTransportSocketFactory(
       const Protobuf::Message& config,
@@ -33,8 +30,7 @@ public:
 
 class DownstreamSslSocketFactory
     : public Server::Configuration::DownstreamTransportSocketConfigFactory,
-      public SslSocketConfigFactory,
-      public Logger::Loggable<Logger::Id::upstream> {
+      public SslSocketConfigFactory {
 public:
   Network::TransportSocketFactoryPtr
   createTransportSocketFactory(const Protobuf::Message& config,

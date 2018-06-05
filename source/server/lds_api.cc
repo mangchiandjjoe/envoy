@@ -57,10 +57,15 @@ void LdsApiImpl::onConfigUpdate(const ResourceVector& resources, const std::stri
   for (const auto& listener : resources) {
     const std::string listener_name = listener.name();
     listeners_to_remove.erase(listener_name);
-    if (listener_manager_.addOrUpdateListener(listener, version_info, true)) {
-      ENVOY_LOG(info, "lds: add/update listener '{}'", listener_name);
-    } else {
-      ENVOY_LOG(debug, "lds: add/update listener '{}' skipped", listener_name);
+    try {
+      if (listener_manager_.addOrUpdateListener(listener, version_info, true)) {
+        ENVOY_LOG(info, "lds: add/update listener '{}'", listener_name);
+      } else {
+        ENVOY_LOG(debug, "lds: add/update listener '{}' skipped", listener_name);
+      }
+    } catch (const EnvoyException& e) {
+      throw EnvoyException(
+          fmt::format("Error adding/updating listener {}: {}", listener_name, e.what()));
     }
   }
 

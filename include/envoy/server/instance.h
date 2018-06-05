@@ -115,7 +115,7 @@ public:
   virtual ListenerManager& listenerManager() PURE;
 
   /**
-   * @return the server's secret manager
+   * @return the server's secret manager.
    */
   virtual Secret::SecretManager& secretManager() PURE;
 

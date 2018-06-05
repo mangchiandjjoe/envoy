@@ -4,7 +4,6 @@
 #include <string>
 
 #include "envoy/common/pure.h"
-#include "envoy/secret/secret.h"
 
 namespace Envoy {
 namespace Ssl {
@@ -32,11 +31,6 @@ public:
    * certificate expiration
    */
   virtual std::string getCertChainInformation() const PURE;
-
-  /**
-   * @return return if secret is updated
-   */
-  virtual bool checkUpdated(const Secret::SecretSharedPtr secret) const PURE;
 };
 
 class ClientContext : public virtual Context {};

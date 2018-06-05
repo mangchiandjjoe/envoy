@@ -379,7 +379,6 @@ bool ClusterManagerImpl::addOrUpdateCluster(const envoy::api::v2::Cluster& clust
   //       and easy to understand.
   const bool use_active_map =
       init_helper_.state() != ClusterManagerInitHelper::State::AllClustersInitialized;
-
   loadCluster(cluster, version_info, true, use_active_map ? active_clusters_ : warming_clusters_);
 
   if (use_active_map) {
@@ -474,8 +473,8 @@ bool ClusterManagerImpl::removeCluster(const std::string& cluster_name) {
 void ClusterManagerImpl::loadCluster(const envoy::api::v2::Cluster& cluster,
                                      const std::string& version_info, bool added_via_api,
                                      ClusterMap& cluster_map) {
-  ClusterSharedPtr new_cluster = ClusterSharedPtr(
-      factory_.clusterFromProto(cluster, *this, outlier_event_logger_, added_via_api));
+  ClusterSharedPtr new_cluster =
+      factory_.clusterFromProto(cluster, *this, outlier_event_logger_, added_via_api);
 
   if (!added_via_api) {
     if (cluster_map.find(new_cluster->info()->name()) != cluster_map.end()) {
@@ -586,14 +585,13 @@ Host::CreateConnectionData ClusterManagerImpl::tcpConnForCluster(const std::stri
 
   auto entry = cluster_manager.thread_local_clusters_.find(cluster);
   if (entry == cluster_manager.thread_local_clusters_.end()) {
-    throw EnvoyException(fmt::format("unknown cluster 2 '{}'", cluster));
+    throw EnvoyException(fmt::format("unknown cluster '{}'", cluster));
   }
 
   HostConstSharedPtr logical_host = entry->second->lb_->chooseHost(context);
   if (logical_host) {
     auto conn_info =
         logical_host->createConnection(cluster_manager.thread_local_dispatcher_, nullptr);
-
     if ((entry->second->cluster_info_->features() &
          ClusterInfo::Features::CLOSE_CONNECTIONS_ON_HOST_HEALTH_FAILURE) &&
         conn_info.connection_ != nullptr) {
@@ -615,7 +613,7 @@ Http::AsyncClient& ClusterManagerImpl::httpAsyncClientForCluster(const std::stri
   if (entry != cluster_manager.thread_local_clusters_.end()) {
     return entry->second->http_async_client_;
   } else {
-    throw EnvoyException(fmt::format("unknown cluster 3 '{}'", cluster));
+    throw EnvoyException(fmt::format("unknown cluster '{}'", cluster));
   }
 }
 

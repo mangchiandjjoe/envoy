@@ -84,7 +84,6 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
                                      Secret::SecretManager& secret_manager)
     : secret_manager_(secret_manager), sds_secret_name_(readSdsSecretName(config)),
       sds_config_source_hash_(readConfigSourceHash(config, secret_manager)),
-      sds_dynamic_secret_not_ready_(false),
       alpn_protocols_(RepeatedPtrUtil::join(config.alpn_protocols(), ",")),
       alt_alpn_protocols_(config.deprecated_v1().alt_alpn_protocols()),
       cipher_suites_(StringUtil::nonEmptyStringOrDefault(

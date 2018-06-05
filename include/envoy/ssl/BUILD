@@ -16,9 +16,6 @@ envoy_cc_library(
 envoy_cc_library(
     name = "context_interface",
     hdrs = ["context.h"],
-    deps = [
-        "//include/envoy/secret:secret_interface",
-    ],
 )
 
 envoy_cc_library(
@@ -32,7 +29,6 @@ envoy_cc_library(
     deps = [
         ":context_config_interface",
         ":context_interface",
-        "//include/envoy/secret:secret_manager_interface",
         "//include/envoy/stats:stats_interface",
     ],
 )

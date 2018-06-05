@@ -103,11 +103,16 @@ public:
    */
   virtual unsigned maxProtocolVersion() const PURE;
 
+  /**
+   * @return The hash code of SdsSecretConfig in std::string. If the SdsSecretConfig is empty, then
+   *         returns empty string.
+   */
   virtual const std::string& sdsConfigShourceHash() const PURE;
 
+  /**
+   * @return The secret name in SdsSecretConfig. SdsSecretConfig is empty, returns empty string.
+   */
   virtual const std::string& sdsSecretName() const PURE;
-
-  virtual bool sdsDynamicSecretNotReady() const PURE;
 };
 
 class ClientContextConfig : public virtual ContextConfig {
