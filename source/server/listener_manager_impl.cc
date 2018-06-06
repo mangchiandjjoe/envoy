@@ -523,8 +523,9 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
     return false;
   }
 
-  ListenerImplPtr new_listener(
+  ListenerImplPtr new_listener = ListenerImplPtr(
       new ListenerImpl(config, version_info, *this, name, modifiable, workers_started_, hash));
+
   ListenerImpl& new_listener_ref = *new_listener;
 
   // We mandate that a listener with the same name must have the same configured address. This

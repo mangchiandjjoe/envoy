@@ -2,7 +2,6 @@
 #include "common/grpc/google_async_client_impl.h"
 
 #include "extensions/grpc_credentials/well_known_names.h"
-
 #endif
 
 #include "test/common/grpc/grpc_client_integration_test_harness.h"
