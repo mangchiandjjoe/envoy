@@ -29,9 +29,7 @@ void SdsApi::initialize(std::function<void()> callback) {
                                    this->server_.localInfo());
       },
       "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets",
-      // TODO(jaebong) needs to use envoy.service.discovery.v2.SecretDiscoveryService.StreamSecrets
-      // when SDS stream service is available.
-      "envoy.service.discovery.v2.SecretDiscoveryService.FetchSecrets");
+      "envoy.service.discovery.v2.SecretDiscoveryService.StreamSecrets");
 
   Config::Utility::checkLocalInfo("sds", server_.localInfo());
 

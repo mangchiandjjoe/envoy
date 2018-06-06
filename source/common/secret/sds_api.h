@@ -5,7 +5,6 @@
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/api/v2/core/config_source.pb.h"
 
-#include "envoy/api/v2/core/config_source.pb.h"
 #include "envoy/config/subscription.h"
 #include "envoy/server/instance.h"
 
