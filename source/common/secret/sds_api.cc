@@ -15,11 +15,9 @@
 namespace Envoy {
 namespace Secret {
 
-SdsApi::SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config,
-               SecretManager& secret_manager)
+SdsApi::SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config)
     : server_(server), sds_config_(sds_config),
-      sds_config_source_hash_(SecretManagerUtil::configSourceHash(sds_config)),
-      secret_manager_(secret_manager) {
+      sds_config_source_hash_(SecretManagerUtil::configSourceHash(sds_config)) {
   server_.initManager().registerTarget(*this);
 }
 
@@ -49,7 +47,7 @@ void SdsApi::onConfigUpdate(const ResourceVector& resources, const std::string&)
   for (const auto& resource : resources) {
     switch (resource.type_case()) {
     case envoy::api::v2::auth::Secret::kTlsCertificate:
-      secret_manager_.addOrUpdateSecret(sds_config_source_hash_, resource);
+      server_.secretManager().addOrUpdateSecret(sds_config_source_hash_, resource);
       break;
     case envoy::api::v2::auth::Secret::kSessionTicketKeys:
       NOT_IMPLEMENTED

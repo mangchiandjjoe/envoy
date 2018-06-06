@@ -73,7 +73,7 @@ std::string SecretManagerImpl::addOrUpdateSdsService(
     return hash;
   }
 
-  sds_apis_[hash] = std::move(std::make_unique<SdsApi>(server_, sdsConfigSource, *this));
+  sds_apis_[hash] = std::move(std::make_unique<SdsApi>(server_, sdsConfigSource));
 
   return hash;
 }
