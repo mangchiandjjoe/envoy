@@ -5,7 +5,6 @@
 
 #include "envoy/network/connection.h"
 #include "envoy/network/transport_socket.h"
-#include "envoy/secret/secret_callbacks.h"
 
 #include "common/common/logger.h"
 #include "common/ssl/context_impl.h"
@@ -65,40 +64,26 @@ private:
   mutable std::string cached_url_encoded_pem_encoded_peer_certificate_;
 };
 
-class ClientSslSocketFactory : public Network::TransportSocketFactory,
-                               public Secret::SecretCallbacks,
-                               Logger::Loggable<Logger::Id::config> {
+class ClientSslSocketFactory : public Network::TransportSocketFactory {
 public:
-  ClientSslSocketFactory(const std::unique_ptr<ClientContextConfig> config,
-                         Ssl::ContextManager& manager, Stats::Scope& stats_scope);
+  ClientSslSocketFactory(const ClientContextConfig& config, Ssl::ContextManager& manager,
+                         Stats::Scope& stats_scope);
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
-  void onAddOrUpdateSecret() override;
 
 private:
-  ClientContextPtr ssl_ctx_;
-  std::unique_ptr<ClientContextConfig> config_;
-  Ssl::ContextManager& manager_;
-  Stats::Scope& stats_scope_;
+  const ClientContextPtr ssl_ctx_;
 };
 
-class ServerSslSocketFactory : public Network::TransportSocketFactory,
-                               public Secret::SecretCallbacks,
-                               Logger::Loggable<Logger::Id::config> {
+class ServerSslSocketFactory : public Network::TransportSocketFactory {
 public:
-  ServerSslSocketFactory(const std::unique_ptr<ServerContextConfig> config,
-                         Ssl::ContextManager& manager, Stats::Scope& stats_scope,
-                         const std::vector<std::string>& server_names);
+  ServerSslSocketFactory(const ServerContextConfig& config, Ssl::ContextManager& manager,
+                         Stats::Scope& stats_scope, const std::vector<std::string>& server_names);
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
-  void onAddOrUpdateSecret() override;
 
 private:
-  ServerContextPtr ssl_ctx_;
-  std::unique_ptr<ServerContextConfig> config_;
-  Ssl::ContextManager& manager_;
-  Stats::Scope& stats_scope_;
-  const std::vector<std::string> server_names_;
+  const ServerContextPtr ssl_ctx_;
 };
 
 } // namespace Ssl

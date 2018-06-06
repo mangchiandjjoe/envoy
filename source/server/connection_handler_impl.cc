@@ -196,15 +196,6 @@ void ConnectionHandlerImpl::ActiveListener::newConnection(Network::ConnectionSoc
   }
 
   auto transport_socket = filter_chain->transportSocketFactory().createTransportSocket();
-  if (!transport_socket) {
-    ENVOY_LOG_TO_LOGGER(parent_.logger_, debug,
-                        "closing connection: transport socket was not created yet");
-    // TODO(jaebong) add stats
-    // stats_.no_filter_chain_match_.inc();
-    socket->close();
-    return;
-  }
-
   Network::ConnectionPtr new_connection =
       parent_.dispatcher_.createServerConnection(std::move(socket), std::move(transport_socket));
   new_connection->setBufferLimits(config_.perConnectionBufferLimitBytes());
