@@ -401,6 +401,16 @@ TEST(ClientContextConfigImplTest, MultipleTlsCertificates) {
       "Multiple TLS certificates are not supported for client contexts");
 }
 
+TEST(ClientContextConfigImplTest, TlsCertificatesAndSdsConfig) {
+  envoy::api::v2::auth::UpstreamTlsContext tls_context;
+  Secret::MockSecretManager secret_manager;
+  tls_context.mutable_common_tls_context()->add_tls_certificates();
+  tls_context.mutable_common_tls_context()->add_tls_certificate_sds_secret_configs();
+  EXPECT_THROW_WITH_MESSAGE(
+      ClientContextConfigImpl client_context_config(tls_context, secret_manager), EnvoyException,
+      "Multiple TLS certificates are not supported for client contexts");
+}
+
 TEST(ClientContextConfigImplTest, StaticTlsCertificates) {
   envoy::api::v2::auth::Secret secret_config;
 
@@ -470,6 +480,20 @@ TEST(ServerContextConfigImplTest, MultipleTlsCertificates) {
       EnvoyException, "A single TLS certificate is required for server contexts");
   tls_context.mutable_common_tls_context()->add_tls_certificates();
   tls_context.mutable_common_tls_context()->add_tls_certificates();
+  EXPECT_THROW_WITH_MESSAGE(
+      ServerContextConfigImpl client_context_config(tls_context, server.secretManager()),
+      EnvoyException, "A single TLS certificate is required for server contexts");
+}
+
+TEST(ServerContextConfigImplTest, TlsCertificatesAndSdsConfig) {
+  Server::MockInstance server;
+  envoy::api::v2::auth::DownstreamTlsContext tls_context;
+
+  EXPECT_THROW_WITH_MESSAGE(
+      ServerContextConfigImpl client_context_config(tls_context, server.secretManager()),
+      EnvoyException, "A single TLS certificate is required for server contexts");
+  tls_context.mutable_common_tls_context()->add_tls_certificates();
+  tls_context.mutable_common_tls_context()->add_tls_certificate_sds_secret_configs();
   EXPECT_THROW_WITH_MESSAGE(
       ServerContextConfigImpl client_context_config(tls_context, server.secretManager()),
       EnvoyException, "A single TLS certificate is required for server contexts");

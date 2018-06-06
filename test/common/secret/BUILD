@@ -15,6 +15,8 @@ envoy_cc_test(
         "//test/common/ssl/test_data:certs",
     ],
     deps = [
+        "//source/common/event:dispatcher_includes",
+        "//source/common/event:dispatcher_lib",
         "//source/common/secret:secret_manager_impl_lib",
         "//source/common/ssl:tls_certificate_config_impl_lib",
         "//test/mocks/server:server_mocks",
