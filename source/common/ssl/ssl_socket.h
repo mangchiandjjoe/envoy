@@ -29,7 +29,7 @@ public:
   const std::string& sha256PeerCertificateDigest() const override;
   std::string subjectPeerCertificate() const override;
   std::string subjectLocalCertificate() const override;
-  std::string uriSanPeerCertificate() override;
+  std::string uriSanPeerCertificate() const override;
   const std::string& urlEncodedPemEncodedPeerCertificate() const override;
   std::vector<std::string> dnsSansPeerCertificate() override;
   std::vector<std::string> dnsSansLocalCertificate() override;
@@ -51,7 +51,7 @@ private:
   Network::PostIoAction doHandshake();
   void drainErrorQueue();
   void shutdownSsl();
-  std::string getUriSanFromCertificate(X509* cert);
+  std::string getUriSanFromCertificate(X509* cert) const;
   std::string getSubjectFromCertificate(X509* cert) const;
   std::vector<std::string> getDnsSansFromCertificate(X509* cert);
 
