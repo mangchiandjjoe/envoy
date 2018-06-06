@@ -387,13 +387,11 @@ Network::TransportSocketPtr ClientSslSocketFactory::createTransportSocket() cons
 bool ClientSslSocketFactory::implementsSecureTransport() const { return true; }
 
 void ClientSslSocketFactory::onAddOrUpdateSecret() {
-  ENVOY_LOG(debug, "{}\n{}", config_->certChain(), config_->privateKey());
-
   if (ssl_ctx_) {
-    ENVOY_LOG(info, "cluster socket updated");
+    ENVOY_LOG(debug, "cluster socket updated");
     ssl_ctx_ = std::move(manager_.updateSslClientContext(ssl_ctx_, stats_scope_, *config_.get()));
   } else {
-    ENVOY_LOG(info, "cluster socket initialized");
+    ENVOY_LOG(debug, "cluster socket initialized");
     ssl_ctx_ = std::move(manager_.createSslClientContext(stats_scope_, *config_.get()));
   }
 }
@@ -414,14 +412,12 @@ Network::TransportSocketPtr ServerSslSocketFactory::createTransportSocket() cons
 bool ServerSslSocketFactory::implementsSecureTransport() const { return true; }
 
 void ServerSslSocketFactory::onAddOrUpdateSecret() {
-  ENVOY_LOG(debug, "{}\n{}", config_->certChain(), config_->privateKey());
-
   if (ssl_ctx_) {
-    ENVOY_LOG(info, "listener socket updated");
+    ENVOY_LOG(debug, "listener socket updated");
     ssl_ctx_ = std::move(
         manager_.updateSslServerContext(ssl_ctx_, stats_scope_, *config_.get(), server_names_));
   } else {
-    ENVOY_LOG(info, "listener socket initialized");
+    ENVOY_LOG(debug, "listener socket initialized");
     ssl_ctx_ =
         std::move(manager_.createSslServerContext(stats_scope_, *config_.get(), server_names_));
   }
