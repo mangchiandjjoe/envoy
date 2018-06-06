@@ -5,6 +5,7 @@
 
 #include "envoy/network/connection.h"
 #include "envoy/network/transport_socket.h"
+#include "envoy/secret/secret_callbacks.h"
 
 #include "common/common/logger.h"
 #include "common/ssl/context_impl.h"
@@ -28,7 +29,7 @@ public:
   const std::string& sha256PeerCertificateDigest() const override;
   std::string subjectPeerCertificate() const override;
   std::string subjectLocalCertificate() const override;
-  std::string uriSanPeerCertificate() override;
+  std::string uriSanPeerCertificate() const override;
   const std::string& urlEncodedPemEncodedPeerCertificate() const override;
   std::vector<std::string> dnsSansPeerCertificate() override;
   std::vector<std::string> dnsSansLocalCertificate() override;
@@ -50,7 +51,7 @@ private:
   Network::PostIoAction doHandshake();
   void drainErrorQueue();
   void shutdownSsl();
-  std::string getUriSanFromCertificate(X509* cert);
+  std::string getUriSanFromCertificate(X509* cert) const;
   std::string getSubjectFromCertificate(X509* cert) const;
   std::vector<std::string> getDnsSansFromCertificate(X509* cert);
 
@@ -64,26 +65,40 @@ private:
   mutable std::string cached_url_encoded_pem_encoded_peer_certificate_;
 };
 
-class ClientSslSocketFactory : public Network::TransportSocketFactory {
+class ClientSslSocketFactory : public Network::TransportSocketFactory,
+                               public Secret::SecretCallbacks,
+                               Logger::Loggable<Logger::Id::config> {
 public:
-  ClientSslSocketFactory(const ClientContextConfig& config, Ssl::ContextManager& manager,
-                         Stats::Scope& stats_scope);
+  ClientSslSocketFactory(const std::unique_ptr<ClientContextConfig> config,
+                         Ssl::ContextManager& manager, Stats::Scope& stats_scope);
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
+  void onAddOrUpdateSecret() override;
 
 private:
-  const ClientContextPtr ssl_ctx_;
+  ClientContextPtr ssl_ctx_;
+  std::unique_ptr<ClientContextConfig> config_;
+  Ssl::ContextManager& manager_;
+  Stats::Scope& stats_scope_;
 };
 
-class ServerSslSocketFactory : public Network::TransportSocketFactory {
+class ServerSslSocketFactory : public Network::TransportSocketFactory,
+                               public Secret::SecretCallbacks,
+                               Logger::Loggable<Logger::Id::config> {
 public:
-  ServerSslSocketFactory(const ServerContextConfig& config, Ssl::ContextManager& manager,
-                         Stats::Scope& stats_scope, const std::vector<std::string>& server_names);
+  ServerSslSocketFactory(const std::unique_ptr<ServerContextConfig> config,
+                         Ssl::ContextManager& manager, Stats::Scope& stats_scope,
+                         const std::vector<std::string>& server_names);
   Network::TransportSocketPtr createTransportSocket() const override;
   bool implementsSecureTransport() const override;
+  void onAddOrUpdateSecret() override;
 
 private:
-  const ServerContextPtr ssl_ctx_;
+  ServerContextPtr ssl_ctx_;
+  std::unique_ptr<ServerContextConfig> config_;
+  Ssl::ContextManager& manager_;
+  Stats::Scope& stats_scope_;
+  const std::vector<std::string> server_names_;
 };
 
 } // namespace Ssl

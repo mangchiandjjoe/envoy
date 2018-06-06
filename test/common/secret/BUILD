@@ -13,8 +13,9 @@ envoy_cc_test(
     srcs = ["secret_manager_impl_test.cc"],
     data = ["//test/config/integration/certs"],
     deps = [
-        "//source/common/secret:secret_impl_lib",
         "//source/common/secret:secret_manager_impl_lib",
+        "//source/common/ssl:tls_certificate_config_impl_lib",
+        "//test/mocks/server:server_mocks",
         "//test/test_common:environment_lib",
         "//test/test_common:registry_lib",
         "//test/test_common:utility_lib",

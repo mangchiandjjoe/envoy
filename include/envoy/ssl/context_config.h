@@ -88,10 +88,14 @@ public:
   virtual const std::vector<std::string>& verifySubjectAltNameList() const PURE;
 
   /**
-   * @return The hex string representation of the certificate hash to be verified, if enabled.
-   * Otherwise, ""
+   * @return A list of a hex-encoded SHA-256 certificate hashes to be verified.
    */
-  virtual const std::string& verifyCertificateHash() const PURE;
+  virtual const std::vector<std::string>& verifyCertificateHashList() const PURE;
+
+  /**
+   * @return A list of a hex-encoded SHA-256 SPKI hashes to be verified.
+   */
+  virtual const std::vector<std::string>& verifyCertificateSpkiList() const PURE;
 
   /**
    * @return The minimum TLS protocol version to negotiate.
@@ -102,6 +106,17 @@ public:
    * @return The maximum TLS protocol version to negotiate.
    */
   virtual unsigned maxProtocolVersion() const PURE;
+
+  /**
+   * @return The hash code of SdsSecretConfig in std::string. If the SdsSecretConfig is empty, then
+   *         returns empty string.
+   */
+  virtual const std::string& sdsConfigShourceHash() const PURE;
+
+  /**
+   * @return The secret name in SdsSecretConfig. SdsSecretConfig is empty, returns empty string.
+   */
+  virtual const std::string& sdsSecretName() const PURE;
 };
 
 class ClientContextConfig : public virtual ContextConfig {

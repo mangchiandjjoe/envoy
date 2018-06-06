@@ -23,11 +23,20 @@ public:
   virtual ClientContextPtr createSslClientContext(Stats::Scope& scope,
                                                   const ClientContextConfig& config) PURE;
 
+  virtual ClientContextPtr updateSslClientContext(const ClientContextPtr& context,
+                                                  Stats::Scope& scope,
+                                                  const ClientContextConfig& config) PURE;
+
   /**
    * Builds a ServerContext from a ServerContextConfig.
    */
   virtual ServerContextPtr
   createSslServerContext(Stats::Scope& scope, const ServerContextConfig& config,
+                         const std::vector<std::string>& server_names) PURE;
+
+  virtual ServerContextPtr
+  updateSslServerContext(const ServerContextPtr& context, Stats::Scope& scope,
+                         const ServerContextConfig& config,
                          const std::vector<std::string>& server_names) PURE;
 
   /**

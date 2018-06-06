@@ -116,8 +116,7 @@ ProdListenerComponentFactory::createDrainManager(envoy::api::v2::Listener::Drain
 
 ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, const std::string& version_info,
                            ListenerManagerImpl& parent, const std::string& name, bool modifiable,
-                           bool workers_started, uint64_t hash,
-                           Secret::SecretManager& secret_manager)
+                           bool workers_started, uint64_t hash)
     : parent_(parent), address_(Network::Address::resolveProtoAddress(config.address())),
       global_scope_(parent_.server_.stats().createScope("")),
       listener_scope_(
@@ -130,7 +129,7 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, const std::st
       listener_tag_(parent_.factory_.nextListenerTag()), name_(name), modifiable_(modifiable),
       workers_started_(workers_started), hash_(hash),
       local_drain_manager_(parent.factory_.createDrainManager(config.drain_type())),
-      config_(config), version_info_(version_info), secret_manager_(secret_manager) {
+      config_(config), version_info_(version_info) {
   if (config.has_transparent()) {
     addListenSocketOptions(Network::SocketOptionFactory::buildIpTransparentOptions());
   }
@@ -198,8 +197,32 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, const std::st
     ProtobufTypes::MessagePtr message =
         Config::Utility::translateToFactoryConfig(transport_socket, config_factory);
 
-    std::vector<std::string> server_names(filter_chain_match.sni_domains().begin(),
-                                          filter_chain_match.sni_domains().end());
+    std::vector<std::string> server_names;
+    if (!filter_chain_match.server_names().empty()) {
+      if (!filter_chain_match.sni_domains().empty()) {
+        throw EnvoyException(
+            fmt::format("error adding listener '{}': both \"server_names\" and the deprecated "
+                        "\"sni_domains\" are used, please merge the list of expected server names "
+                        "into \"server_names\" and remove \"sni_domains\"",
+                        address_->asString()));
+      }
+
+      server_names.assign(filter_chain_match.server_names().begin(),
+                          filter_chain_match.server_names().end());
+    } else if (!filter_chain_match.sni_domains().empty()) {
+      server_names.assign(filter_chain_match.sni_domains().begin(),
+                          filter_chain_match.sni_domains().end());
+    }
+
+    // Reject partial wildcards, we don't match on them.
+    for (const auto& server_name : server_names) {
+      if (server_name.find('*') != std::string::npos && !isWildcardServerName(server_name)) {
+        throw EnvoyException(
+            fmt::format("error adding listener '{}': partial wildcards are not supported in "
+                        "\"server_names\" (or the deprecated \"sni_domains\")",
+                        address_->asString()));
+      }
+    }
 
     std::vector<std::string> application_protocols(
         filter_chain_match.application_protocols().begin(),
@@ -209,9 +232,9 @@ ListenerImpl::ListenerImpl(const envoy::api::v2::Listener& config, const std::st
                    config_factory.createTransportSocketFactory(*message, *this, server_names),
                    parent_.factory_.createNetworkFilterFactoryList(filter_chain.filters(), *this));
 
-    need_tls_inspector = filter_chain_match.transport_protocol() == "tls" ||
-                         (filter_chain_match.transport_protocol().empty() &&
-                          (!server_names.empty() || !application_protocols.empty()));
+    need_tls_inspector |= filter_chain_match.transport_protocol() == "tls" ||
+                          (filter_chain_match.transport_protocol().empty() &&
+                           (!server_names.empty() || !application_protocols.empty()));
   }
 
   // Automatically inject TLS Inspector if it wasn't configured explicitly and it's needed.
@@ -302,14 +325,15 @@ ListenerImpl::findFilterChain(const Network::ConnectionSocket& socket) const {
     return findFilterChainForServerName(server_name_exact_match->second, socket);
   }
 
-  // Match on the wildcard domain, i.e. ".example.com" for "www.example.com".
-  const size_t pos = server_name.find('.');
-  if (pos > 0 && pos < server_name.size() - 1) {
+  // Match on all wildcard domains, i.e. ".example.com" and ".com" for "www.example.com".
+  size_t pos = server_name.find('.', 1);
+  while (pos < server_name.size() - 1 && pos != std::string::npos) {
     const std::string wildcard = server_name.substr(pos);
     const auto server_name_wildcard_match = filter_chains_.find(wildcard);
     if (server_name_wildcard_match != filter_chains_.end()) {
       return findFilterChainForServerName(server_name_wildcard_match->second, socket);
     }
+    pos = server_name.find('.', pos + 1);
   }
 
   // Match on a filter chain without server name requirements.
@@ -499,8 +523,9 @@ bool ListenerManagerImpl::addOrUpdateListener(const envoy::api::v2::Listener& co
     return false;
   }
 
-  ListenerImplPtr new_listener(new ListenerImpl(config, version_info, *this, name, modifiable,
-                                                workers_started_, hash, server_.secretManager()));
+  ListenerImplPtr new_listener = ListenerImplPtr(
+      new ListenerImpl(config, version_info, *this, name, modifiable, workers_started_, hash));
+
   ListenerImpl& new_listener_ref = *new_listener;
 
   // We mandate that a listener with the same name must have the same configured address. This

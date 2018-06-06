@@ -1,7 +1,7 @@
 #pragma once
 
 #include <functional>
-#include <list>
+#include <set>
 #include <shared_mutex>
 
 #include "envoy/runtime/runtime.h"
@@ -34,16 +34,26 @@ public:
   // Ssl::ContextManager
   Ssl::ClientContextPtr createSslClientContext(Stats::Scope& scope,
                                                const ClientContextConfig& config) override;
+  Ssl::ClientContextPtr updateSslClientContext(const Ssl::ClientContextPtr& context,
+                                               Stats::Scope& scope,
+                                               const ClientContextConfig& config) override;
+
   Ssl::ServerContextPtr
   createSslServerContext(Stats::Scope& scope, const ServerContextConfig& config,
                          const std::vector<std::string>& server_names) override;
+
+  virtual ServerContextPtr
+  updateSslServerContext(const ServerContextPtr& context, Stats::Scope& scope,
+                         const ServerContextConfig& config,
+                         const std::vector<std::string>& server_names) override;
+
   size_t daysUntilFirstCertExpires() const override;
   void iterateContexts(std::function<void(const Context&)> callback) override;
   Secret::SecretManager& secretManager() override { return secret_manager_; }
 
 private:
   Runtime::Loader& runtime_;
-  std::list<Context*> contexts_;
+  std::set<Context*> contexts_;
   mutable std::shared_timed_mutex contexts_lock_;
   Secret::SecretManager& secret_manager_;
 };

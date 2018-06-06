@@ -33,20 +33,28 @@ public:
                ? INLINE_STRING
                : certificate_revocation_list_path_;
   }
-  const std::string& certChain() const override { return cert_chain_; }
+  const std::string& certChain() const override;
   const std::string& certChainPath() const override {
     return (cert_chain_path_.empty() && !cert_chain_.empty()) ? INLINE_STRING : cert_chain_path_;
   }
-  const std::string& privateKey() const override { return private_key_; }
+  const std::string& privateKey() const override;
   const std::string& privateKeyPath() const override {
     return (private_key_path_.empty() && !private_key_.empty()) ? INLINE_STRING : private_key_path_;
   }
   const std::vector<std::string>& verifySubjectAltNameList() const override {
     return verify_subject_alt_name_list_;
   };
-  const std::string& verifyCertificateHash() const override { return verify_certificate_hash_; };
+  const std::vector<std::string>& verifyCertificateHashList() const override {
+    return verify_certificate_hash_list_;
+  };
+  const std::vector<std::string>& verifyCertificateSpkiList() const override {
+    return verify_certificate_spki_list_;
+  };
   unsigned minProtocolVersion() const override { return min_protocol_version_; };
   unsigned maxProtocolVersion() const override { return max_protocol_version_; };
+
+  const std::string& sdsConfigShourceHash() const override { return sds_config_source_hash_; }
+  const std::string& sdsSecretName() const override { return sds_secret_name_; }
 
 protected:
   ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContext& config,
@@ -59,6 +67,10 @@ private:
 
   static const std::string DEFAULT_CIPHER_SUITES;
   static const std::string DEFAULT_ECDH_CURVES;
+
+  Secret::SecretManager& secret_manager_;
+  const std::string sds_secret_name_;
+  const std::string sds_config_source_hash_;
 
   const std::string alpn_protocols_;
   const std::string alt_alpn_protocols_;
@@ -73,7 +85,8 @@ private:
   const std::string private_key_;
   const std::string private_key_path_;
   const std::vector<std::string> verify_subject_alt_name_list_;
-  const std::string verify_certificate_hash_;
+  const std::vector<std::string> verify_certificate_hash_list_;
+  const std::vector<std::string> verify_certificate_spki_list_;
   const unsigned min_protocol_version_;
   const unsigned max_protocol_version_;
 };

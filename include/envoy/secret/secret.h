@@ -1,39 +1,41 @@
 #pragma once
 
-#include <stdexcept>
+#include <memory>
 #include <string>
-#include <unordered_map>
-#include <vector>
 
-#include "envoy/common/exception.h"
-#include "envoy/ssl/context.h"
+#include "envoy/common/pure.h"
 
 namespace Envoy {
 namespace Secret {
 
+class Secret;
+
+typedef std::shared_ptr<Secret> SecretSharedPtr;
+
 /**
- * Secret contains certificate chain and private key
+ * An instance of the secret.
  */
 class Secret {
 public:
   virtual ~Secret() {}
 
+  enum SecretType { TLS_CERTIFICATE };
+
   /**
-   * @return a name of the SDS secret
+   * @return a name of the secret.
    */
   virtual const std::string& name() const PURE;
 
   /**
-   * @return a string of certificate chain
+   * @return a type of the secret instance.
    */
-  virtual const std::string& certificateChain() const PURE;
-  /**
-   * @return a string of private key
-   */
-  virtual const std::string& privateKey() const PURE;
-};
+  virtual SecretType type() const PURE;
 
-typedef std::shared_ptr<Secret> SecretSharedPtr;
+  /**
+   * @return true if secret contains same values. Otherwise returns false.
+   */
+  virtual bool equalTo(const SecretSharedPtr& secret) const PURE;
+};
 
 } // namespace Secret
 } // namespace Envoy
