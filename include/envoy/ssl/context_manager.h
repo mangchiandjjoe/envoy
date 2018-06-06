@@ -2,6 +2,7 @@
 
 #include <functional>
 
+#include "envoy/secret/secret_manager.h"
 #include "envoy/ssl/context.h"
 #include "envoy/ssl/context_config.h"
 #include "envoy/stats/stats.h"
@@ -22,11 +23,20 @@ public:
   virtual ClientContextPtr createSslClientContext(Stats::Scope& scope,
                                                   const ClientContextConfig& config) PURE;
 
+  virtual ClientContextPtr updateSslClientContext(const ClientContextPtr& context,
+                                                  Stats::Scope& scope,
+                                                  const ClientContextConfig& config) PURE;
+
   /**
    * Builds a ServerContext from a ServerContextConfig.
    */
   virtual ServerContextPtr
   createSslServerContext(Stats::Scope& scope, const ServerContextConfig& config,
+                         const std::vector<std::string>& server_names) PURE;
+
+  virtual ServerContextPtr
+  updateSslServerContext(const ServerContextPtr& context, Stats::Scope& scope,
+                         const ServerContextConfig& config,
                          const std::vector<std::string>& server_names) PURE;
 
   /**
@@ -38,6 +48,11 @@ public:
    * Iterate through all currently allocated contexts.
    */
   virtual void iterateContexts(std::function<void(const Context&)> callback) PURE;
+
+  /**
+   * Return the secret manager
+   */
+  virtual Secret::SecretManager& secretManager() PURE;
 };
 
 } // namespace Ssl

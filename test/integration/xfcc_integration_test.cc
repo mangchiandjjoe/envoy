@@ -12,6 +12,7 @@
 #include "common/ssl/context_manager_impl.h"
 #include "common/ssl/ssl_socket.h"
 
+#include "test/mocks/server/mocks.h"
 #include "test/test_common/network_utility.h"
 #include "test/test_common/printers.h"
 #include "test/test_common/utility.h"
@@ -56,11 +57,13 @@ Network::TransportSocketFactoryPtr XfccIntegrationTest::createClientSslContext(b
   } else {
     target = json_tls;
   }
+
   Json::ObjectSharedPtr loader = TestEnvironment::jsonLoadFromString(target);
-  Ssl::ClientContextConfigImpl cfg(*loader);
+
   static auto* client_stats_store = new Stats::TestIsolatedStoreImpl();
-  return Network::TransportSocketFactoryPtr{
-      new Ssl::ClientSslSocketFactory(cfg, *context_manager_, *client_stats_store)};
+  return Network::TransportSocketFactoryPtr{new Ssl::ClientSslSocketFactory(
+      std::make_unique<Ssl::ClientContextConfigImpl>(*loader, server_.secretManager()),
+      *context_manager_, *client_stats_store)};
 }
 
 Network::TransportSocketFactoryPtr XfccIntegrationTest::createUpstreamSslContext() {
@@ -72,10 +75,11 @@ Network::TransportSocketFactoryPtr XfccIntegrationTest::createUpstreamSslContext
 )EOF";
 
   Json::ObjectSharedPtr loader = TestEnvironment::jsonLoadFromString(json);
-  Ssl::ServerContextConfigImpl cfg(*loader);
+
   static Stats::Scope* upstream_stats_store = new Stats::TestIsolatedStoreImpl();
   return std::make_unique<Ssl::ServerSslSocketFactory>(
-      cfg, *context_manager_, *upstream_stats_store, std::vector<std::string>{});
+      std::make_unique<Ssl::ServerContextConfigImpl>(*loader, server_.secretManager()),
+      *context_manager_, *upstream_stats_store, std::vector<std::string>{});
 }
 
 Network::ClientConnectionPtr XfccIntegrationTest::makeClientConnection() {
@@ -121,7 +125,7 @@ void XfccIntegrationTest::initialize() {
   }
 
   runtime_.reset(new NiceMock<Runtime::MockLoader>());
-  context_manager_.reset(new Ssl::ContextManagerImpl(*runtime_));
+  context_manager_.reset(new Ssl::ContextManagerImpl(*runtime_, server_.secretManager()));
   client_tls_ssl_ctx_ = createClientSslContext(false);
   client_mtls_ssl_ctx_ = createClientSslContext(true);
   HttpIntegrationTest::initialize();

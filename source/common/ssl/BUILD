@@ -18,6 +18,8 @@ envoy_cc_library(
         ":context_lib",
         "//include/envoy/network:connection_interface",
         "//include/envoy/network:transport_socket_interface",
+        "//include/envoy/secret:secret_callbacks_interface",
+        "//include/envoy/secret:secret_manager_interface",
         "//source/common/common:assert_lib",
         "//source/common/common:empty_string",
         "//source/common/common:minimal_logger_lib",
@@ -33,8 +35,11 @@ envoy_cc_library(
         "ssl",
     ],
     deps = [
+        ":tls_certificate_config_impl_lib",
+        "//include/envoy/secret:secret_manager_interface",
         "//include/envoy/ssl:context_config_interface",
         "//source/common/common:assert_lib",
+        "//source/common/common:empty_string",
         "//source/common/config:datasource_lib",
         "//source/common/config:tls_context_json_lib",
         "//source/common/json:json_loader_lib",
@@ -56,6 +61,7 @@ envoy_cc_library(
     external_deps = ["ssl"],
     deps = [
         "//include/envoy/runtime:runtime_interface",
+        "//include/envoy/secret:secret_manager_interface",
         "//include/envoy/ssl:context_config_interface",
         "//include/envoy/ssl:context_interface",
         "//include/envoy/ssl:context_manager_interface",
@@ -64,5 +70,16 @@ envoy_cc_library(
         "//source/common/common:assert_lib",
         "//source/common/common:base64_lib",
         "//source/common/common:hex_lib",
+    ],
+)
+
+envoy_cc_library(
+    name = "tls_certificate_config_impl_lib",
+    srcs = ["tls_certificate_config_impl.cc"],
+    hdrs = ["tls_certificate_config_impl.h"],
+    deps = [
+        "//include/envoy/secret:secret_interface",
+        "//source/common/config:datasource_lib",
+        "@envoy_api//envoy/api/v2/auth:cert_cc",
     ],
 )

@@ -10,6 +10,7 @@
 #include "test/integration/fake_upstream.h"
 #include "test/mocks/grpc/mocks.h"
 #include "test/mocks/local_info/mocks.h"
+#include "test/mocks/server/mocks.h"
 #include "test/mocks/tracing/mocks.h"
 #include "test/mocks/upstream/mocks.h"
 #include "test/proto/helloworld.pb.h"
@@ -449,10 +450,10 @@ public:
       tls_cert->mutable_private_key()->set_filename(
           TestEnvironment::runfilesPath("test/config/integration/certs/clientkey.pem"));
     }
-    Ssl::ClientContextConfigImpl cfg(tls_context);
 
-    mock_cluster_info_->transport_socket_factory_ =
-        std::make_unique<Ssl::ClientSslSocketFactory>(cfg, context_manager_, *stats_store_);
+    mock_cluster_info_->transport_socket_factory_ = std::make_unique<Ssl::ClientSslSocketFactory>(
+        std::make_unique<Ssl::ClientContextConfigImpl>(tls_context, server_.secretManager()),
+        context_manager_, *stats_store_);
     ON_CALL(*mock_cluster_info_, transportSocketFactory())
         .WillByDefault(ReturnRef(*mock_cluster_info_->transport_socket_factory_));
     async_client_transport_socket_ =
@@ -478,15 +479,16 @@ public:
       validation_context->mutable_trusted_ca()->set_filename(
           TestEnvironment::runfilesPath("test/config/integration/certs/cacert.pem"));
     }
-    Ssl::ServerContextConfigImpl cfg(tls_context);
 
     static Stats::Scope* upstream_stats_store = new Stats::IsolatedStoreImpl();
     return std::make_unique<Ssl::ServerSslSocketFactory>(
-        cfg, context_manager_, *upstream_stats_store, std::vector<std::string>{});
+        std::make_unique<Ssl::ServerContextConfigImpl>(tls_context, server_.secretManager()),
+        context_manager_, *upstream_stats_store, std::vector<std::string>{});
   }
 
   bool use_client_cert_{};
-  Ssl::ContextManagerImpl context_manager_{runtime_};
+  Server::MockInstance server_;
+  Ssl::ContextManagerImpl context_manager_{runtime_, server_.secretManager()};
 };
 
 } // namespace

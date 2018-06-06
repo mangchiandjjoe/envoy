@@ -117,3 +117,9 @@ envoy_cc_library(
         "//source/common/common:assert_lib",
     ],
 )
+
+envoy_cc_test_library(
+    name = "certs_test_expected_lib",
+    srcs = ["certs_test_expected.cc"],
+    hdrs = ["certs_test_expected.h"],
+)

@@ -25,6 +25,9 @@ envoy_cc_test(
 envoy_cc_test(
     name = "configuration_impl_test",
     srcs = ["configuration_impl_test.cc"],
+    data = [
+        "//test/common/ssl/test_data:certs",
+    ],
     deps = [
         "//source/common/event:dispatcher_lib",
         "//source/common/upstream:cluster_manager_lib",
@@ -34,6 +37,7 @@ envoy_cc_test(
         "//test/mocks:common_lib",
         "//test/mocks/network:network_mocks",
         "//test/mocks/server:server_mocks",
+        "//test/test_common:certs_test_expected_lib",
         "//test/test_common:environment_lib",
         "//test/test_common:utility_lib",
     ],
