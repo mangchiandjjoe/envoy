@@ -8,14 +8,12 @@
 #include "envoy/secret/secret_manager.h"
 #include "envoy/server/instance.h"
 
-#include "common/common/logger.h"
 #include "common/secret/sds_api.h"
-#include "common/ssl/tls_certificate_config_impl.h"
 
 namespace Envoy {
 namespace Secret {
 
-class SecretManagerImpl : public SecretManager, Logger::Loggable<Logger::Id::upstream> {
+class SecretManagerImpl : public SecretManager {
 public:
   SecretManagerImpl(Server::Instance& server) : server_(server) {}
 

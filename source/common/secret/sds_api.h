@@ -1,14 +1,13 @@
 #pragma once
 
 #include <functional>
-#include <vector>
 
 #include "envoy/api/v2/auth/cert.pb.h"
-#include "envoy/config/subscription.h"
-#include "envoy/secret/secret_manager.h"
-#include "envoy/server/instance.h"
+#include "envoy/api/v2/core/config_source.pb.h"
 
-#include "common/common/logger.h"
+#include "envoy/api/v2/core/config_source.pb.h"
+#include "envoy/config/subscription.h"
+#include "envoy/server/instance.h"
 
 namespace Envoy {
 namespace Secret {
@@ -17,9 +16,7 @@ namespace Secret {
  * SDS API implementation that fetches secrets from SDS server via Subscription.
  */
 class SdsApi : public Init::Target,
-               Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret>,
-               Logger::Loggable<Logger::Id::upstream> {
-
+               Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret> {
 public:
   SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config);
 

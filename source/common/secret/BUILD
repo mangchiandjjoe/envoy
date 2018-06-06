@@ -38,12 +38,9 @@ envoy_cc_library(
         ":sds_subscription_lib",
         ":secret_manager_util",
         "//include/envoy/config:subscription_interface",
-        "//include/envoy/secret:secret_interface",
-        "//include/envoy/secret:secret_manager_interface",
         "//include/envoy/server:instance_interface",
         "//source/common/config:resources_lib",
         "//source/common/config:subscription_factory_lib",
-        "//source/common/ssl:tls_certificate_config_impl_lib",
     ],
 )
 

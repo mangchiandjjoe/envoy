@@ -1,6 +1,5 @@
 #include "common/secret/secret_manager_impl.h"
 
-#include "common/common/logger.h"
 #include "common/secret/secret_manager_util.h"
 #include "common/ssl/tls_certificate_config_impl.h"
 

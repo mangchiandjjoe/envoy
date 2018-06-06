@@ -4,6 +4,7 @@
 
 #include "common/config/well_known_names.h"
 #include "common/upstream/cluster_manager_impl.h"
+#include "common/ssl/tls_certificate_config_impl.h"
 
 #include "server/configuration_impl.h"
 
