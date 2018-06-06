@@ -27,7 +27,18 @@ public:
     return ClientContextPtr{createSslClientContext_(scope, config)};
   }
 
+  ClientContextPtr updateSslClientContext(const ClientContextPtr&, Stats::Scope& scope,
+                                          const ClientContextConfig& config) override {
+    return ClientContextPtr{createSslClientContext_(scope, config)};
+  }
+
   ServerContextPtr createSslServerContext(Stats::Scope& scope, const ServerContextConfig& config,
+                                          const std::vector<std::string>& server_names) override {
+    return ServerContextPtr{createSslServerContext_(scope, config, server_names)};
+  }
+
+  ServerContextPtr updateSslServerContext(const ServerContextPtr&, Stats::Scope& scope,
+                                          const ServerContextConfig& config,
                                           const std::vector<std::string>& server_names) override {
     return ServerContextPtr{createSslServerContext_(scope, config, server_names)};
   }

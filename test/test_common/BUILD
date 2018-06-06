@@ -2,8 +2,8 @@ licenses(["notice"])  # Apache 2
 
 load(
     "//bazel:envoy_build_system.bzl",
-    "envoy_cc_library",
     "envoy_basic_cc_library",
+    "envoy_cc_library",
     "envoy_cc_test_library",
     "envoy_package",
 )
@@ -116,4 +116,10 @@ envoy_cc_library(
     deps = [
         "//source/common/common:assert_lib",
     ],
+)
+
+envoy_cc_test_library(
+    name = "certs_test_expected_lib",
+    srcs = ["certs_test_expected.cc"],
+    hdrs = ["certs_test_expected.h"],
 )

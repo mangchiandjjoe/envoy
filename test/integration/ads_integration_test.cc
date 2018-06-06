@@ -83,11 +83,10 @@ public:
     tls_cert->mutable_private_key()->set_filename(
         TestEnvironment::runfilesPath("test/config/integration/certs/upstreamkey.pem"));
 
-    Ssl::ServerContextConfigImpl cfg(tls_context, secret_manager_);
-
     static Stats::Scope* upstream_stats_store = new Stats::TestIsolatedStoreImpl();
     return std::make_unique<Ssl::ServerSslSocketFactory>(
-        cfg, context_manager_, *upstream_stats_store, std::vector<std::string>{});
+        std::make_unique<Ssl::ServerContextConfigImpl>(tls_context, secret_manager_),
+        context_manager_, *upstream_stats_store, std::vector<std::string>{});
   }
 
   AssertionResult
