@@ -1,57 +1,53 @@
 #include "common/secret/secret_manager_impl.h"
 
 #include "common/secret/secret_manager_util.h"
-#include "common/ssl/tls_certificate_config_impl.h"
+#include "common/ssl/tls_certificate_secret_impl.h"
 
 namespace Envoy {
 namespace Secret {
 
 void SecretManagerImpl::addOrUpdateSecret(const std::string& sds_config_source_hash,
                                           const envoy::api::v2::auth::Secret& secret_config) {
-  SecretSharedPtr secret;
   switch (secret_config.type_case()) {
-  case envoy::api::v2::auth::Secret::TypeCase::kTlsCertificate:
-    secret = std::make_shared<Ssl::TlsCertificateConfigImpl>(secret_config);
-    break;
+  case envoy::api::v2::auth::Secret::TypeCase::kTlsCertificate: {
+    std::unique_lock<std::shared_timed_mutex> lhs(tls_certificate_secrets_mutex_);
+    auto secret = std::make_shared<Ssl::TlsCertificateSecretImpl>(secret_config.name(),
+                                                                  secret_config.tls_certificate());
+    tls_certificate_secrets_[sds_config_source_hash][secret_config.name()] = secret;
+
+    if (!sds_config_source_hash.empty()) {
+      server_.dispatcher().post([this, &sds_config_source_hash, secret]() {
+        std::shared_lock<std::shared_timed_mutex> lhs(
+            tls_certificate_secret_update_callbacks_mutex_);
+        auto config_source_it =
+            tls_certificate_secret_update_callbacks_.find(sds_config_source_hash);
+        if (config_source_it != tls_certificate_secret_update_callbacks_.end()) {
+          auto callback_it = config_source_it->second.find(secret->name());
+          if (callback_it != config_source_it->second.end()) {
+            if (callback_it->second.first == nullptr ||
+                !callback_it->second.first->equalTo(*secret.get())) {
+              for (auto& callback : callback_it->second.second) {
+                callback->onAddOrUpdateSecret();
+              }
+              callback_it->second.first = secret;
+            }
+          }
+        }
+      });
+    }
+  } break;
   default:
     throw EnvoyException("Secret type not implemented");
   }
-
-  std::unique_lock<std::shared_timed_mutex> lhs(secrets_mutex_);
-  secrets_[secret->type()][sds_config_source_hash][secret->name()] = secret;
-
-  if (!sds_config_source_hash.empty()) {
-    server_.dispatcher().post([this, sds_config_source_hash, secret]() {
-      // run secret update callbacks
-      std::unique_lock<std::shared_timed_mutex> lhs(secret_update_callbacks_mutex_);
-      auto config_source_it = secret_update_callbacks_.find(sds_config_source_hash);
-      if (config_source_it != secret_update_callbacks_.end()) {
-        auto callback_it = config_source_it->second.find(secret->name());
-        if (callback_it != config_source_it->second.end()) {
-          if (callback_it->second.first == nullptr || !callback_it->second.first->equalTo(secret)) {
-            for (auto& callback : callback_it->second.second) {
-              callback->onAddOrUpdateSecret();
-            }
-            callback_it->second.first = secret;
-          }
-        }
-      }
-    });
-  }
 }
 
-const SecretSharedPtr SecretManagerImpl::findSecret(Secret::SecretType type,
-                                                    const std::string& sdsConfigSourceHash,
-                                                    const std::string& name) const {
-  std::shared_lock<std::shared_timed_mutex> lhs(secrets_mutex_);
+const TlsCertificateSecretSharedPtr
+SecretManagerImpl::findTlsCertificateSecret(const std::string& sds_config_source_hash,
+                                            const std::string& name) const {
+  std::shared_lock<std::shared_timed_mutex> lhs(tls_certificate_secrets_mutex_);
 
-  auto type_it = secrets_.find(type);
-  if (type_it == secrets_.end()) {
-    return nullptr;
-  }
-
-  auto config_source_it = type_it->second.find(sdsConfigSourceHash);
-  if (config_source_it == type_it->second.end()) {
+  auto config_source_it = tls_certificate_secrets_.find(sds_config_source_hash);
+  if (config_source_it == tls_certificate_secrets_.end()) {
     return nullptr;
   }
 
@@ -77,16 +73,17 @@ std::string SecretManagerImpl::addOrUpdateSdsService(
   return hash;
 }
 
-void SecretManagerImpl::registerSecretCallbacks(const std::string config_source_hash,
-                                                const std::string secret_name,
-                                                SecretCallbacks& callback) {
-  auto secret = findSecret(Secret::TLS_CERTIFICATE, config_source_hash, secret_name);
+void SecretManagerImpl::registerTlsCertificateSecretCallbacks(const std::string config_source_hash,
+                                                              const std::string secret_name,
+                                                              SecretCallbacks& callback) {
+  auto secret = findTlsCertificateSecret(config_source_hash, secret_name);
 
-  std::unique_lock<std::shared_timed_mutex> lhs(secret_update_callbacks_mutex_);
+  std::unique_lock<std::shared_timed_mutex> lhs(tls_certificate_secret_update_callbacks_mutex_);
 
-  auto config_source_it = secret_update_callbacks_.find(config_source_hash);
-  if (config_source_it == secret_update_callbacks_.end()) {
-    secret_update_callbacks_[config_source_hash][secret_name] = {secret, {&callback}};
+  auto config_source_it = tls_certificate_secret_update_callbacks_.find(config_source_hash);
+  if (config_source_it == tls_certificate_secret_update_callbacks_.end()) {
+    tls_certificate_secret_update_callbacks_[config_source_hash][secret_name] = {secret,
+                                                                                 {&callback}};
     return;
   }
 

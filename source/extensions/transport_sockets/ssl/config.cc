@@ -30,7 +30,8 @@ Network::TransportSocketFactoryPtr UpstreamSslSocketFactory::createTransportSock
       std::move(upstream_config), context.sslContextManager(), context.statsScope());
 
   if (!hash.empty()) {
-    context.sslContextManager().secretManager().registerSecretCallbacks(hash, name, *tsf.get());
+    context.sslContextManager().secretManager().registerTlsCertificateSecretCallbacks(hash, name,
+                                                                                      *tsf.get());
   }
 
   return std::move(tsf);
@@ -62,7 +63,8 @@ Network::TransportSocketFactoryPtr DownstreamSslSocketFactory::createTransportSo
       server_names);
 
   if (!hash.empty()) {
-    context.sslContextManager().secretManager().registerSecretCallbacks(hash, name, *tsf.get());
+    context.sslContextManager().secretManager().registerTlsCertificateSecretCallbacks(hash, name,
+                                                                                      *tsf.get());
   }
 
   return std::move(tsf);

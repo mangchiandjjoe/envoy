@@ -8,18 +8,12 @@
 namespace Envoy {
 namespace Secret {
 
-class Secret;
-
-typedef std::shared_ptr<Secret> SecretSharedPtr;
-
 /**
- * An instance of the secret.
+ * An instance of the TlsCertificateSecret
  */
-class Secret {
+class TlsCertificateSecret {
 public:
-  virtual ~Secret() {}
-
-  enum SecretType { TLS_CERTIFICATE };
+  virtual ~TlsCertificateSecret() {}
 
   /**
    * @return a name of the secret.
@@ -27,15 +21,23 @@ public:
   virtual const std::string& name() const PURE;
 
   /**
-   * @return a type of the secret instance.
+   * @return a string of certificate chain
    */
-  virtual SecretType type() const PURE;
+  virtual const std::string& certificateChain() const PURE;
 
   /**
-   * @return true if secret contains same values. Otherwise returns false.
+   * @return a string of private key
    */
-  virtual bool equalTo(const SecretSharedPtr& secret) const PURE;
+  virtual const std::string& privateKey() const PURE;
+
+  /**
+   * @return true if secret contains same certificate chain and private key.
+   *              Otherwise returns false.
+   */
+  virtual bool equalTo(const TlsCertificateSecret& secret) const PURE;
 };
+
+typedef std::shared_ptr<TlsCertificateSecret> TlsCertificateSecretSharedPtr;
 
 } // namespace Secret
 } // namespace Envoy

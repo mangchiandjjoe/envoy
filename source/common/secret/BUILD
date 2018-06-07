@@ -26,7 +26,7 @@ envoy_cc_library(
         ":secret_manager_util",
         "//include/envoy/secret:secret_manager_interface",
         "//include/envoy/server:instance_interface",
-        "//source/common/ssl:tls_certificate_config_impl_lib",
+        "//source/common/ssl:tls_certificate_secret_impl_lib",
     ],
 )
 

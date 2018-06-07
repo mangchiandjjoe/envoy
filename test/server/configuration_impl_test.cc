@@ -3,8 +3,8 @@
 #include <string>
 
 #include "common/config/well_known_names.h"
+#include "common/ssl/tls_certificate_secret_impl.h"
 #include "common/upstream/cluster_manager_impl.h"
-#include "common/ssl/tls_certificate_config_impl.h"
 
 #include "server/configuration_impl.h"
 
@@ -13,7 +13,6 @@
 #include "test/mocks/common.h"
 #include "test/mocks/network/mocks.h"
 #include "test/mocks/server/mocks.h"
-#include "test/test_common/certs_test_expected.h"
 #include "test/test_common/environment.h"
 #include "test/test_common/utility.h"
 
@@ -326,7 +325,8 @@ TEST_F(ConfigurationImplTest, StaticSecretRead) {
 
   auto secret_config = bootstrap.mutable_static_resources()->mutable_secrets()->Add();
 
-  std::string yaml = R"EOF(
+  std::string yaml =
+      R"EOF(
 name: "abc.com"
 tls_certificate:
   certificate_chain:
@@ -340,15 +340,17 @@ tls_certificate:
   MainImpl config;
   config.initialize(bootstrap, server_, cluster_manager_factory_);
 
-  auto secret = server_.secretManager().findSecret(Secret::Secret::TLS_CERTIFICATE, "", "abc.com");
+  auto secret = server_.secretManager().findTlsCertificateSecret("", "abc.com");
 
   ASSERT_NE(secret, nullptr);
 
-  EXPECT_EQ(Testdata::kExpectedCertificateChain,
-            std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(secret)->certificateChain());
+  EXPECT_EQ(
+      TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_cert.pem"),
+      secret->certificateChain());
 
-  EXPECT_EQ(Testdata::kExpectedPrivateKey,
-            std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(secret)->privateKey());
+  EXPECT_EQ(
+      TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_key.pem"),
+      secret->privateKey());
 }
 
 } // namespace Configuration

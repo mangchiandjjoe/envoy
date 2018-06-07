@@ -5,10 +5,9 @@
 
 #include "common/event/dispatcher_impl.h"
 #include "common/secret/secret_manager_impl.h"
-#include "common/ssl/tls_certificate_config_impl.h"
+#include "common/ssl/tls_certificate_secret_impl.h"
 
 #include "test/mocks/server/mocks.h"
-#include "test/test_common/certs_test_expected.h"
 #include "test/test_common/environment.h"
 #include "test/test_common/utility.h"
 
@@ -46,7 +45,8 @@ class SecretManagerImplTest : public testing::Test {};
 TEST_F(SecretManagerImplTest, SdsStaticSecret) {
   envoy::api::v2::auth::Secret secret_config;
 
-  std::string yaml = R"EOF(
+  std::string yaml =
+      R"EOF(
 name: "abc.com"
 tls_certificate:
   certificate_chain:
@@ -61,23 +61,17 @@ tls_certificate:
 
   server.secretManager().addOrUpdateSecret("", secret_config);
 
-  ASSERT_EQ(server.secretManager().findSecret(Secret::SecretType::TLS_CERTIFICATE, "", "undefined"),
-            nullptr);
+  ASSERT_EQ(server.secretManager().findTlsCertificateSecret("", "undefined"), nullptr);
 
-  ASSERT_NE(server.secretManager().findSecret(Secret::SecretType::TLS_CERTIFICATE, "", "abc.com"),
-            nullptr);
+  ASSERT_NE(server.secretManager().findTlsCertificateSecret("", "abc.com"), nullptr);
 
   EXPECT_EQ(
-      Testdata::kExpectedCertificateChain,
-      std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(
-          server.secretManager().findSecret(Secret::SecretType::TLS_CERTIFICATE, "", "abc.com"))
-          ->certificateChain());
+      TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_cert.pem"),
+      server.secretManager().findTlsCertificateSecret("", "abc.com")->certificateChain());
 
   EXPECT_EQ(
-      Testdata::kExpectedPrivateKey,
-      std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(
-          server.secretManager().findSecret(Secret::SecretType::TLS_CERTIFICATE, "", "abc.com"))
-          ->privateKey());
+      TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_key.pem"),
+      server.secretManager().findTlsCertificateSecret("", "abc.com")->privateKey());
 }
 
 TEST_F(SecretManagerImplTest, SdsDynamicSecretCallback) {
@@ -103,33 +97,31 @@ tls_certificate:
   EXPECT_CALL(*secret_callback.get(), onAddOrUpdateSecret());
   std::string config_source_hash = server.secretManager().addOrUpdateSdsService(config_source);
 
-  server.secretManager().registerSecretCallbacks(config_source_hash, "abc.com",
-                                                 *secret_callback.get());
+  server.secretManager().registerTlsCertificateSecretCallbacks(config_source_hash, "abc.com",
+                                                               *secret_callback.get());
   server.secretManager().addOrUpdateSecret(config_source_hash, secret_config);
 
   server.dispatcher().run(Event::Dispatcher::RunType::Block);
 
-  ASSERT_EQ(server.secretManager().findSecret(Secret::SecretType::TLS_CERTIFICATE,
-                                              config_source_hash, "undefined"),
+  ASSERT_EQ(server.secretManager().findTlsCertificateSecret(config_source_hash, "undefined"),
             nullptr);
 
-  EXPECT_EQ(Testdata::kExpectedCertificateChain,
-            std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(
-                server.secretManager().findSecret(Secret::SecretType::TLS_CERTIFICATE,
-                                                  config_source_hash, "abc.com"))
-                ->certificateChain());
+  EXPECT_EQ(
+      TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_cert.pem"),
+      server.secretManager()
+          .findTlsCertificateSecret(config_source_hash, "abc.com")
+          ->certificateChain());
 
-  EXPECT_EQ(Testdata::kExpectedPrivateKey,
-            std::dynamic_pointer_cast<Ssl::TlsCertificateConfigImpl>(
-                server.secretManager().findSecret(Secret::SecretType::TLS_CERTIFICATE,
-                                                  config_source_hash, "abc.com"))
-                ->privateKey());
+  EXPECT_EQ(
+      TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_key.pem"),
+      server.secretManager().findTlsCertificateSecret(config_source_hash, "abc.com")->privateKey());
 }
 
 TEST_F(SecretManagerImplTest, NotImplementedException) {
   envoy::api::v2::auth::Secret secret_config;
 
-  std::string yaml = R"EOF(
+  std::string yaml =
+      R"EOF(
 name: "abc.com"
 session_ticket_keys:
   keys:

@@ -17,21 +17,21 @@ public:
 
   /**
    * add or update secret grouped by type.
-   * @param sdsConfigSourceHash a hash string of normalized config source. If it is empty string,
+   * @param sds_config_source_hash a hash string of normalized config source. If it is empty string,
    *        find secret from the static secrets.
    * @param secret a shared_ptr of an implementation of Secret.
    */
-  virtual void addOrUpdateSecret(const std::string& sdsConfigSourceHash,
+  virtual void addOrUpdateSecret(const std::string& sds_config_source_hash,
                                  const envoy::api::v2::auth::Secret& secret) PURE;
 
-  /**const envoy::api::v2::auth::Secret& secret
-   * @param sdsConfigSourceHash hash string of normalized config source.
+  /**
+   * @param sds_config_source_hash hash string of normalized config source.
    * @param name a name of the secret
-   * @return the secret in given type. Returns nullptr if the secret is not found.
+   * @return the TlsCertificate secret. Returns nullptr if the secret is not found.
    */
-  virtual const SecretSharedPtr findSecret(Secret::SecretType type,
-                                           const std::string& sdsConfigSourceHash,
-                                           const std::string& name) const PURE;
+  virtual const TlsCertificateSecretSharedPtr
+  findTlsCertificateSecret(const std::string& sds_config_source_hash,
+                           const std::string& name) const PURE;
 
   /**
    * Add or update SDS config source. SecretManager start downloading secrets from registered
@@ -46,13 +46,13 @@ public:
   /**
    * Register callback function when on secret were updated.
    *
-   * @param hash Hash code of ConfigSource
+   * @param sds_config_source_hash Hash code of ConfigSource
    * @param secret updated SecretSharedPtr
    * @param callback Callback function
    */
-  virtual void registerSecretCallbacks(const std::string config_source_hash,
-                                       const std::string secret_name,
-                                       SecretCallbacks& callback) PURE;
+  virtual void registerTlsCertificateSecretCallbacks(const std::string sds_config_source_hash,
+                                                     const std::string secret_name,
+                                                     SecretCallbacks& callback) PURE;
 };
 
 } // namespace Secret

@@ -4,7 +4,6 @@
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/api/v2/core/config_source.pb.h"
-
 #include "envoy/config/subscription.h"
 #include "envoy/server/instance.h"
 
@@ -14,8 +13,7 @@ namespace Secret {
 /**
  * SDS API implementation that fetches secrets from SDS server via Subscription.
  */
-class SdsApi : public Init::Target,
-               Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret> {
+class SdsApi : public Init::Target, Config::SubscriptionCallbacks<envoy::api::v2::auth::Secret> {
 public:
   SdsApi(Server::Instance& server, const envoy::api::v2::core::ConfigSource& sds_config);
 

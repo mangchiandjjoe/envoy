@@ -5,14 +5,13 @@
 #include "common/secret/secret_manager_impl.h"
 #include "common/ssl/context_config_impl.h"
 #include "common/ssl/context_impl.h"
-#include "common/ssl/tls_certificate_config_impl.h"
+#include "common/ssl/tls_certificate_secret_impl.h"
 #include "common/stats/stats_impl.h"
 
 #include "test/common/ssl/ssl_certs_test.h"
 #include "test/mocks/runtime/mocks.h"
 #include "test/mocks/secret/mocks.h"
 #include "test/mocks/server/mocks.h"
-#include "test/test_common/certs_test_expected.h"
 #include "test/test_common/environment.h"
 #include "test/test_common/utility.h"
 
@@ -436,8 +435,12 @@ tls_certificate:
 
   ClientContextConfigImpl client_context_config(tls_context, server.secretManager());
 
-  EXPECT_EQ(Testdata::kExpectedCertificateChain, client_context_config.certChain());
-  EXPECT_EQ(Testdata::kExpectedPrivateKey, client_context_config.privateKey());
+  EXPECT_EQ(
+      TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_cert.pem"),
+      client_context_config.certChain());
+  EXPECT_EQ(
+      TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_key.pem"),
+      client_context_config.privateKey());
 }
 
 TEST(ClientContextConfigImplTest, MissingStaticSecretTlsCertificates) {
