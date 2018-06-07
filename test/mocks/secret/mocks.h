@@ -1,10 +1,5 @@
 #pragma once
 
-#include <chrono>
-#include <cstdint>
-#include <list>
-#include <string>
-
 #include "envoy/secret/secret.h"
 #include "envoy/secret/secret_manager.h"
 
@@ -33,7 +28,4 @@ public:
 };
 
 } // namespace Secret
-  // namespace Secret
-  // namespace Secret
-  // namespace Secret
 } // namespace Envoy
