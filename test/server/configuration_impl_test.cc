@@ -3,7 +3,6 @@
 #include <string>
 
 #include "common/config/well_known_names.h"
-#include "common/ssl/tls_certificate_secret_impl.h"
 #include "common/upstream/cluster_manager_impl.h"
 
 #include "server/configuration_impl.h"
@@ -340,7 +339,7 @@ tls_certificate:
   MainImpl config;
   config.initialize(bootstrap, server_, cluster_manager_factory_);
 
-  auto secret = server_.secretManager().findTlsCertificateSecret("", "abc.com");
+  auto secret = server_.secretManager().findTlsCertificate("", "abc.com");
 
   ASSERT_NE(secret, nullptr);
 

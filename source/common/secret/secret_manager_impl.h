@@ -22,9 +22,8 @@ public:
   std::string
   addOrUpdateSdsService(const envoy::api::v2::core::ConfigSource& config_source) override;
 
-  const TlsCertificateSecretSharedPtr
-  findTlsCertificateSecret(const std::string& config_source_hash,
-                           const std::string& name) const override;
+  const TlsCertificateSecret* findTlsCertificate(const std::string& config_source_hash,
+                                                 const std::string& name) const override;
 
   void registerTlsCertificateSecretCallbacks(const std::string& config_source_hash,
                                              const std::string& secret_name,
@@ -39,9 +38,9 @@ protected:
       Event::Dispatcher& dispatcher, std::shared_timed_mutex& secret_update_callbacks_mutex,
       std::unordered_map<
           std::string,
-          std::unordered_map<std::string, std::pair<T, std::vector<SecretCallbacks*>>>>&
+          std::unordered_map<std::string, std::pair<const T*, std::vector<SecretCallbacks*>>>>&
           registered_callbacks,
-      const std::string& config_source_hash, const T& secret);
+      const std::string& config_source_hash, const std::string& name, const T* secret);
 
 private:
   Server::Instance& server_;
@@ -64,7 +63,7 @@ private:
   //   ]
   // }
   std::unordered_map<std::string,
-                     std::unordered_map<std::string, std::pair<TlsCertificateSecretSharedPtr,
+                     std::unordered_map<std::string, std::pair<const TlsCertificateSecret*,
                                                                std::vector<SecretCallbacks*>>>>
       tls_certificate_secret_update_callbacks_;
   mutable std::shared_timed_mutex tls_certificate_secret_update_callbacks_mutex_;

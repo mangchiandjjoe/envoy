@@ -17,9 +17,9 @@ public:
 
   MOCK_METHOD2(addOrUpdateSecret, void(const std::string& sdsConfigSourceHash,
                                        const envoy::api::v2::auth::Secret& secret));
-  MOCK_CONST_METHOD2(findTlsCertificateSecret,
-                     const TlsCertificateSecretSharedPtr(const std::string& sdsConfigSourceHash,
-                                                         const std::string& name));
+  MOCK_CONST_METHOD2(findTlsCertificate,
+                     const TlsCertificateSecret*(const std::string& sdsConfigSourceHash,
+                                                 const std::string& name));
   MOCK_METHOD1(addOrUpdateSdsService,
                std::string(const envoy::api::v2::core::ConfigSource& sdsConfigSource));
   MOCK_METHOD3(registerTlsCertificateSecretCallbacks,

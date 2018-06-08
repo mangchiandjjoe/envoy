@@ -16,11 +16,6 @@ public:
   virtual ~TlsCertificateSecret() {}
 
   /**
-   * @return a name of the secret.
-   */
-  virtual const std::string& name() const PURE;
-
-  /**
    * @return a string of certificate chain
    */
   virtual const std::string& certificateChain() const PURE;
@@ -37,7 +32,7 @@ public:
   virtual bool equalTo(const TlsCertificateSecret& secret) const PURE;
 };
 
-typedef std::shared_ptr<TlsCertificateSecret> TlsCertificateSecretSharedPtr;
+typedef std::shared_ptr<const TlsCertificateSecret> TlsCertificateSecretSharedPtr;
 
 } // namespace Secret
 } // namespace Envoy

@@ -29,9 +29,8 @@ public:
    * @param name a name of the secret
    * @return the TlsCertificate secret. Returns nullptr if the secret is not found.
    */
-  virtual const TlsCertificateSecretSharedPtr
-  findTlsCertificateSecret(const std::string& config_source_hash,
-                           const std::string& name) const PURE;
+  virtual const TlsCertificateSecret* findTlsCertificate(const std::string& config_source_hash,
+                                                         const std::string& name) const PURE;
 
   /**
    * Add or update SDS config source. SecretManager start downloading secrets from registered

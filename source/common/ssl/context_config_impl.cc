@@ -8,7 +8,6 @@
 #include "common/config/datasource.h"
 #include "common/config/tls_context_json.h"
 #include "common/protobuf/utility.h"
-#include "common/ssl/tls_certificate_secret_impl.h"
 
 #include "openssl/ssl.h"
 
@@ -37,12 +36,12 @@ std::string readConfig(
     const std::string config_source_hash, const std::string secret_name,
     const std::function<std::string(const envoy::api::v2::auth::TlsCertificate& tls_certificate)>&
         read_inline_secret,
-    const std::function<std::string(const Secret::TlsCertificateSecretSharedPtr& secret)>&
+    const std::function<std::string(const Secret::TlsCertificateSecret* secret)>&
         read_managed_secret) {
   if (!config.tls_certificates().empty()) {
     return read_inline_secret(config.tls_certificates()[0]);
   } else if (!config.tls_certificate_sds_secret_configs().empty()) {
-    auto secret = secret_manager.findTlsCertificateSecret(config_source_hash, secret_name);
+    auto secret = secret_manager.findTlsCertificate(config_source_hash, secret_name);
     if (!secret) {
       if (config_source_hash.empty()) {
         throw EnvoyException(
@@ -96,7 +95,7 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           [](const envoy::api::v2::auth::TlsCertificate& tls_certificate) -> std::string {
             return Config::DataSource::read(tls_certificate.certificate_chain(), true);
           },
-          [](const Secret::TlsCertificateSecretSharedPtr& secret) -> std::string {
+          [](const Secret::TlsCertificateSecret* secret) -> std::string {
             return secret->certificateChain();
           })),
       cert_chain_path_(
@@ -108,7 +107,7 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           [](const envoy::api::v2::auth::TlsCertificate& tls_certificate) -> std::string {
             return Config::DataSource::read(tls_certificate.private_key(), true);
           },
-          [](const Secret::TlsCertificateSecretSharedPtr& secret) -> std::string {
+          [](const Secret::TlsCertificateSecret* secret) -> std::string {
             return secret->privateKey();
           })),
       private_key_path_(
@@ -156,7 +155,7 @@ const std::string& ContextConfigImpl::certChain() const {
     return cert_chain_;
   }
 
-  auto secret = secret_manager_.findTlsCertificateSecret(sds_config_source_hash_, sds_secret_name_);
+  auto secret = secret_manager_.findTlsCertificate(sds_config_source_hash_, sds_secret_name_);
   if (!secret) {
     return cert_chain_;
   }
@@ -169,7 +168,7 @@ const std::string& ContextConfigImpl::privateKey() const {
     return private_key_;
   }
 
-  auto secret = secret_manager_.findTlsCertificateSecret(sds_config_source_hash_, sds_secret_name_);
+  auto secret = secret_manager_.findTlsCertificate(sds_config_source_hash_, sds_secret_name_);
   if (!secret) {
     return private_key_;
   }

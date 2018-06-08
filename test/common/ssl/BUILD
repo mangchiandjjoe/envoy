@@ -58,7 +58,6 @@ envoy_cc_test(
         "//source/common/json:json_loader_lib",
         "//source/common/ssl:context_config_lib",
         "//source/common/ssl:context_lib",
-        "//source/common/ssl:tls_certificate_secret_impl_lib",
         "//source/common/stats:stats_lib",
         "//test/mocks/runtime:runtime_mocks",
         "//test/mocks/secret:secret_mocks",

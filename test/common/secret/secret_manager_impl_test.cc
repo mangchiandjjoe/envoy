@@ -5,7 +5,6 @@
 
 #include "common/event/dispatcher_impl.h"
 #include "common/secret/secret_manager_impl.h"
-#include "common/ssl/tls_certificate_secret_impl.h"
 
 #include "test/mocks/server/mocks.h"
 #include "test/test_common/environment.h"
@@ -61,17 +60,17 @@ tls_certificate:
 
   server.secretManager().addOrUpdateSecret("", secret_config);
 
-  ASSERT_EQ(server.secretManager().findTlsCertificateSecret("", "undefined"), nullptr);
+  ASSERT_EQ(server.secretManager().findTlsCertificate("", "undefined"), nullptr);
 
-  ASSERT_NE(server.secretManager().findTlsCertificateSecret("", "abc.com"), nullptr);
+  ASSERT_NE(server.secretManager().findTlsCertificate("", "abc.com"), nullptr);
 
   EXPECT_EQ(
       TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_cert.pem"),
-      server.secretManager().findTlsCertificateSecret("", "abc.com")->certificateChain());
+      server.secretManager().findTlsCertificate("", "abc.com")->certificateChain());
 
   EXPECT_EQ(
       TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_key.pem"),
-      server.secretManager().findTlsCertificateSecret("", "abc.com")->privateKey());
+      server.secretManager().findTlsCertificate("", "abc.com")->privateKey());
 }
 
 TEST_F(SecretManagerImplTest, SdsDynamicSecretCallback) {
@@ -103,18 +102,15 @@ tls_certificate:
 
   server.dispatcher().run(Event::Dispatcher::RunType::Block);
 
-  ASSERT_EQ(server.secretManager().findTlsCertificateSecret(config_source_hash, "undefined"),
-            nullptr);
+  ASSERT_EQ(server.secretManager().findTlsCertificate(config_source_hash, "undefined"), nullptr);
 
   EXPECT_EQ(
       TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_cert.pem"),
-      server.secretManager()
-          .findTlsCertificateSecret(config_source_hash, "abc.com")
-          ->certificateChain());
+      server.secretManager().findTlsCertificate(config_source_hash, "abc.com")->certificateChain());
 
   EXPECT_EQ(
       TestEnvironment::readFileToStringForTest("test/common/ssl/test_data/selfsigned_key.pem"),
-      server.secretManager().findTlsCertificateSecret(config_source_hash, "abc.com")->privateKey());
+      server.secretManager().findTlsCertificate(config_source_hash, "abc.com")->privateKey());
 }
 
 TEST_F(SecretManagerImplTest, NotImplementedException) {
