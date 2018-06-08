@@ -30,6 +30,19 @@ public:
                                              const std::string& secret_name,
                                              SecretCallbacks& callback) override;
 
+protected:
+  /**
+   * Run registered callback functions for the given type of secret
+   */
+  template <typename T>
+  void runSecretUpdateCallbacksIfAny(
+      Event::Dispatcher& dispatcher, std::shared_timed_mutex& secret_update_callbacks_mutex,
+      std::unordered_map<
+          std::string,
+          std::unordered_map<std::string, std::pair<T, std::vector<SecretCallbacks*>>>>&
+          registered_callbacks,
+      const std::string& config_source_hash, const T& secret);
+
 private:
   Server::Instance& server_;
 

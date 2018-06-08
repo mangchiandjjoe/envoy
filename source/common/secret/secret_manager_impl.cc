@@ -16,23 +16,9 @@ void SecretManagerImpl::addOrUpdateSecret(const std::string& config_source_hash,
     tls_certificate_secrets_[config_source_hash][secret_config.name()] = secret;
 
     if (!config_source_hash.empty()) {
-      server_.dispatcher().post([this, &config_source_hash, secret]() {
-        std::shared_lock<std::shared_timed_mutex> lhs(
-            tls_certificate_secret_update_callbacks_mutex_);
-        auto config_source_it = tls_certificate_secret_update_callbacks_.find(config_source_hash);
-        if (config_source_it != tls_certificate_secret_update_callbacks_.end()) {
-          auto callback_it = config_source_it->second.find(secret->name());
-          if (callback_it != config_source_it->second.end()) {
-            if (callback_it->second.first == nullptr ||
-                !callback_it->second.first->equalTo(*secret.get())) {
-              for (auto& callback : callback_it->second.second) {
-                callback->onAddOrUpdateSecret();
-              }
-              callback_it->second.first = secret;
-            }
-          }
-        }
-      });
+      runSecretUpdateCallbacksIfAny<TlsCertificateSecretSharedPtr>(
+          server_.dispatcher(), tls_certificate_secret_update_callbacks_mutex_,
+          tls_certificate_secret_update_callbacks_, config_source_hash, secret);
     }
   } break;
   default:
@@ -93,6 +79,36 @@ void SecretManagerImpl::registerTlsCertificateSecretCallbacks(const std::string&
   }
 
   name_it->second.second.push_back(&callback);
+}
+
+template <typename T>
+void SecretManagerImpl::runSecretUpdateCallbacksIfAny(
+    Event::Dispatcher& dispatcher, std::shared_timed_mutex& secret_update_callbacks_mutex,
+    std::unordered_map<
+        std::string, std::unordered_map<std::string, std::pair<T, std::vector<SecretCallbacks*>>>>&
+        registered_callbacks,
+    const std::string& config_source_hash, const T& secret) {
+  if (config_source_hash.empty()) {
+    return;
+  }
+
+  dispatcher.post(
+      [&secret_update_callbacks_mutex, &registered_callbacks, &config_source_hash, secret]() {
+        std::shared_lock<std::shared_timed_mutex> lhs(secret_update_callbacks_mutex);
+        auto config_source_it = registered_callbacks.find(config_source_hash);
+        if (config_source_it != registered_callbacks.end()) {
+          auto callback_it = config_source_it->second.find(secret->name());
+          if (callback_it != config_source_it->second.end()) {
+            if (callback_it->second.first == nullptr ||
+                !callback_it->second.first->equalTo(*secret.get())) {
+              for (auto& callback : callback_it->second.second) {
+                callback->onAddOrUpdateSecret();
+              }
+              callback_it->second.first = secret;
+            }
+          }
+        }
+      });
 }
 
 } // namespace Secret
