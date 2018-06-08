@@ -17,17 +17,17 @@ class SecretManagerImpl : public SecretManager {
 public:
   SecretManagerImpl(Server::Instance& server) : server_(server) {}
 
-  void addOrUpdateSecret(const std::string& sdsConfigSourceHash,
+  void addOrUpdateSecret(const std::string& config_source_hash,
                          const envoy::api::v2::auth::Secret& secret) override;
   std::string
-  addOrUpdateSdsService(const envoy::api::v2::core::ConfigSource& sdsConfigSource) override;
+  addOrUpdateSdsService(const envoy::api::v2::core::ConfigSource& config_source) override;
 
   const TlsCertificateSecretSharedPtr
-  findTlsCertificateSecret(const std::string& sdsConfigSourceHash,
+  findTlsCertificateSecret(const std::string& config_source_hash,
                            const std::string& name) const override;
 
-  void registerTlsCertificateSecretCallbacks(const std::string config_source_hash,
-                                             const std::string secret_name,
+  void registerTlsCertificateSecretCallbacks(const std::string& config_source_hash,
+                                             const std::string& secret_name,
                                              SecretCallbacks& callback) override;
 
 private:

@@ -23,7 +23,7 @@ public:
   MOCK_METHOD1(addOrUpdateSdsService,
                std::string(const envoy::api::v2::core::ConfigSource& sdsConfigSource));
   MOCK_METHOD3(registerTlsCertificateSecretCallbacks,
-               void(const std::string config_source_hash, const std::string secret_name,
+               void(const std::string& config_source_hash, const std::string& secret_name,
                     SecretCallbacks& callback));
 };
 

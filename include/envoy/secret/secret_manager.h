@@ -21,7 +21,7 @@ public:
    *        find secret from the static secrets.
    * @param secret a shared_ptr of an implementation of Secret.
    */
-  virtual void addOrUpdateSecret(const std::string& sds_config_source_hash,
+  virtual void addOrUpdateSecret(const std::string& config_source_hash,
                                  const envoy::api::v2::auth::Secret& secret) PURE;
 
   /**
@@ -30,7 +30,7 @@ public:
    * @return the TlsCertificate secret. Returns nullptr if the secret is not found.
    */
   virtual const TlsCertificateSecretSharedPtr
-  findTlsCertificateSecret(const std::string& sds_config_source_hash,
+  findTlsCertificateSecret(const std::string& config_source_hash,
                            const std::string& name) const PURE;
 
   /**
@@ -41,17 +41,17 @@ public:
    * @return a hash string of normalized config source
    */
   virtual std::string
-  addOrUpdateSdsService(const envoy::api::v2::core::ConfigSource& sdsConfigSource) PURE;
+  addOrUpdateSdsService(const envoy::api::v2::core::ConfigSource& config_source) PURE;
 
   /**
    * Register callback function when on secret were updated.
    *
-   * @param sds_config_source_hash Hash code of ConfigSource
-   * @param secret updated SecretSharedPtr
-   * @param callback Callback function
+   * @param config_source_hash Hash code of ConfigSource
+   * @param secret_name name of the secret
+   * @param callback SecretCallbacks class
    */
-  virtual void registerTlsCertificateSecretCallbacks(const std::string sds_config_source_hash,
-                                                     const std::string secret_name,
+  virtual void registerTlsCertificateSecretCallbacks(const std::string& config_source_hash,
+                                                     const std::string& secret_name,
                                                      SecretCallbacks& callback) PURE;
 };
 
