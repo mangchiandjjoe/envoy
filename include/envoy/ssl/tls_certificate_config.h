@@ -6,14 +6,14 @@
 #include "envoy/common/pure.h"
 
 namespace Envoy {
-namespace Secret {
+namespace Ssl {
 
 /**
- * An instance of the TlsCertificateSecret
+ * An instance of the TlsCertificateConfig
  */
-class TlsCertificateSecret {
+class TlsCertificateConfig {
 public:
-  virtual ~TlsCertificateSecret() {}
+  virtual ~TlsCertificateConfig() {}
 
   /**
    * @return a string of certificate chain
@@ -29,10 +29,10 @@ public:
    * @return true if secret contains same certificate chain and private key.
    *              Otherwise returns false.
    */
-  virtual bool equalTo(const TlsCertificateSecret& secret) const PURE;
+  virtual bool equalTo(const TlsCertificateConfig& secret) const PURE;
 };
 
-typedef std::shared_ptr<const TlsCertificateSecret> TlsCertificateSecretSharedPtr;
+typedef std::shared_ptr<const TlsCertificateConfig> TlsCertificateConfigSharedPtr;
 
-} // namespace Secret
+} // namespace Ssl
 } // namespace Envoy

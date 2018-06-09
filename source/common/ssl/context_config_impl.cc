@@ -3,6 +3,8 @@
 #include <memory>
 #include <string>
 
+#include "envoy/ssl/tls_certificate_config.h"
+
 #include "common/common/assert.h"
 #include "common/common/empty_string.h"
 #include "common/config/datasource.h"
@@ -36,7 +38,7 @@ std::string readConfig(
     const std::string config_source_hash, const std::string secret_name,
     const std::function<std::string(const envoy::api::v2::auth::TlsCertificate& tls_certificate)>&
         read_inline_secret,
-    const std::function<std::string(const Secret::TlsCertificateSecret* secret)>&
+    const std::function<std::string(Ssl::TlsCertificateConfigSharedPtr secret)>&
         read_managed_secret) {
   if (!config.tls_certificates().empty()) {
     return read_inline_secret(config.tls_certificates()[0]);
@@ -95,7 +97,7 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           [](const envoy::api::v2::auth::TlsCertificate& tls_certificate) -> std::string {
             return Config::DataSource::read(tls_certificate.certificate_chain(), true);
           },
-          [](const Secret::TlsCertificateSecret* secret) -> std::string {
+          [](Ssl::TlsCertificateConfigSharedPtr secret) -> std::string {
             return secret->certificateChain();
           })),
       cert_chain_path_(
@@ -107,7 +109,7 @@ ContextConfigImpl::ContextConfigImpl(const envoy::api::v2::auth::CommonTlsContex
           [](const envoy::api::v2::auth::TlsCertificate& tls_certificate) -> std::string {
             return Config::DataSource::read(tls_certificate.private_key(), true);
           },
-          [](const Secret::TlsCertificateSecret* secret) -> std::string {
+          [](Ssl::TlsCertificateConfigSharedPtr secret) -> std::string {
             return secret->privateKey();
           })),
       private_key_path_(

@@ -77,7 +77,7 @@ envoy_cc_library(
     srcs = ["tls_certificate_config_impl.cc"],
     hdrs = ["tls_certificate_config_impl.h"],
     deps = [
-        "//include/envoy/secret:secret_interface",
+        "//include/envoy/ssl:tls_certificate_config_interface",
         "//source/common/config:datasource_lib",
         "@envoy_api//envoy/api/v2/auth:cert_cc",
     ],

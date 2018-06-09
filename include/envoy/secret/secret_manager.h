@@ -2,8 +2,8 @@
 
 #include "envoy/api/v2/auth/cert.pb.h"
 #include "envoy/api/v2/core/config_source.pb.h"
-#include "envoy/secret/secret.h"
 #include "envoy/secret/secret_callbacks.h"
+#include "envoy/ssl/tls_certificate_config.h"
 
 namespace Envoy {
 namespace Secret {
@@ -29,8 +29,8 @@ public:
    * @param name a name of the secret
    * @return the TlsCertificate secret. Returns nullptr if the secret is not found.
    */
-  virtual const TlsCertificateSecret* findTlsCertificate(const std::string& config_source_hash,
-                                                         const std::string& name) const PURE;
+  virtual Ssl::TlsCertificateConfigSharedPtr
+  findTlsCertificate(const std::string& config_source_hash, const std::string& name) const PURE;
 
   /**
    * Add or update SDS config source. SecretManager start downloading secrets from registered
@@ -49,7 +49,7 @@ public:
    * @param secret_name name of the secret
    * @param callback SecretCallbacks class
    */
-  virtual void registerTlsCertificateSecretCallbacks(const std::string& config_source_hash,
+  virtual void registerTlsCertificateConfigCallbacks(const std::string& config_source_hash,
                                                      const std::string& secret_name,
                                                      SecretCallbacks& callback) PURE;
 };

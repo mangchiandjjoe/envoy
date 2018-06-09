@@ -4,18 +4,18 @@
 #include <unordered_map>
 
 #include "envoy/api/v2/auth/cert.pb.h"
-#include "envoy/secret/secret.h"
+#include "envoy/ssl/tls_certificate_config.h"
 
 namespace Envoy {
 namespace Ssl {
 
-class TlsCertificateSecretImpl : public Secret::TlsCertificateSecret {
+class TlsCertificateConfigImpl : public Ssl::TlsCertificateConfig {
 public:
-  TlsCertificateSecretImpl(const envoy::api::v2::auth::TlsCertificate& config);
+  TlsCertificateConfigImpl(const envoy::api::v2::auth::TlsCertificate& config);
 
   const std::string& certificateChain() const override { return certificate_chain_; }
   const std::string& privateKey() const override { return private_key_; }
-  bool equalTo(const TlsCertificateSecret& secret) const override;
+  bool equalTo(const TlsCertificateConfig& secret) const override;
 
 private:
   const std::string certificate_chain_;

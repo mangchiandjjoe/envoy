@@ -7,12 +7,12 @@
 namespace Envoy {
 namespace Ssl {
 
-TlsCertificateSecretImpl::TlsCertificateSecretImpl(
+TlsCertificateConfigImpl::TlsCertificateConfigImpl(
     const envoy::api::v2::auth::TlsCertificate& config)
     : certificate_chain_(Config::DataSource::read(config.certificate_chain(), true)),
       private_key_(Config::DataSource::read(config.private_key(), true)) {}
 
-bool TlsCertificateSecretImpl::equalTo(const TlsCertificateSecret& secret) const {
+bool TlsCertificateConfigImpl::equalTo(const TlsCertificateConfig& secret) const {
   return certificate_chain_ == secret.certificateChain() && private_key_ == secret.privateKey();
 }
 

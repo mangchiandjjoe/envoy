@@ -96,7 +96,7 @@ tls_certificate:
   EXPECT_CALL(*secret_callback.get(), onAddOrUpdateSecret());
   std::string config_source_hash = server.secretManager().addOrUpdateSdsService(config_source);
 
-  server.secretManager().registerTlsCertificateSecretCallbacks(config_source_hash, "abc.com",
+  server.secretManager().registerTlsCertificateConfigCallbacks(config_source_hash, "abc.com",
                                                                *secret_callback.get());
   server.secretManager().addOrUpdateSecret(config_source_hash, secret_config);
 
